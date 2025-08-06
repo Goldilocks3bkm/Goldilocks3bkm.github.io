@@ -11,7 +11,7 @@ const abcList  = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".split(''
 
 // ====== 画像読み込み ======
 function preload() {
-  bgImg = loadImage("alice001.PNG");  // ← ファイル名は自分の画像に合わせてね
+  bgImg = loadImage("");  // ← ファイル名は自分の画像に合わせてね
 }
 
 // ====== ランダム単語生成 ======
@@ -197,3 +197,4 @@ class Leaf {
     }
   }
 }
+
