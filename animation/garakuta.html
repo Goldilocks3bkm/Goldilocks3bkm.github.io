@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>空から降る機械部品</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto; /* hiddenからautoに変更 - スクロールバー表示 */
+            font-family: Arial, sans-serif;
+            /* minal002.png */
+            background-image: url('minal002.png'); /* ←ここを変更してください */
+            background-size: contain; /* coverからcontainに変更 - 画像全体を表示 */
+            background-position: center center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }
+        
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 1001;
+            font-size: 12px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            transition: opacity 0.3s ease;
+        }
+        
+        .controls.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .controls label {
+            display: block;
+            margin: 5px 0;
+        }
+        
+        .controls input {
+            width: 60px;
+            margin-left: 5px;
+        }
+        
+        .controls button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin: 5px 2px;
+        }
+        
+        .controls button:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <div class="controls" id="controls">
+        <h3>設定</h3>
+        <label>生成量: <input type="range" id="spawnRate" min="0" max="10" step="0.5" value="2"></label>
+        <label>最小サイズ: <input type="range" id="minSize" min="3" max="20" value="6"></label>
+        <label>最大サイズ: <input type="range" id="maxSize" min="10" max="50" value="25"></label>
+        <label>最小速度: <input type="range" id="minSpeed" min="0.2" max="2" step="0.1" value="0.8"></label>
+        <label>最大速度: <input type="range" id="maxSpeed" min="1" max="5" step="0.1" value="2.5"></label>
+        <label>星の瞬き: <input type="checkbox" id="starTwinkle" checked></label>
+        <br>
+        <button onclick="clearParts()">クリア</button>
+        <button onclick="toggleAnimation()">停止/再開</button>
+        <button onclick="toggleControls()">コントロール非表示</button>
+    </div>
+    
+    <!-- 非表示時の表示切替ボタン -->
+    <div id="showControls" style="position: fixed; top: 20px; right: 20px; background: rgba(0,0,0,0.6); color: white; padding: 10px; border-radius: 5px; cursor: pointer; z-index: 1002; display: none;" onclick="toggleControls()">
+        ⚙️
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let animationRunning = true;
+        let parts = [];
+        
+        // 設定
+        let config = {
+            spawnRate: 2,
+            minSize: 6,
+            maxSize: 25,
+            minSpeed: 0.8,
+            maxSpeed: 2.5,
+            starTwinkle: true
+        };
+        
+        // 機械部品の形状と描画関数
+        const partTypes = [
+            // 歯車
+            {
+                name: 'gear',
+                draw: function(ctx, x, y, size, color, rotation) {
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(rotation);
+                    ctx.fillStyle = color;
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    
+                    const teeth = 8;
+                    const outerRadius = size;
+                    const innerRadius = size * 0.6;
+                    const toothHeight = size * 0.2;
+                    
+                    ctx.beginPath();
+                    for (let i = 0; i < teeth * 2; i++) {
+                        const angle = (i * Math.PI) / teeth;
+                        const radius = i % 2 === 0 ? outerRadius : outerRadius - toothHeight;
+                        const px = Math.cos(angle) * radius;
+                        const py = Math.sin(angle) * radius;
+                        
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    // 中心の穴
+                    ctx.beginPath();
+                    ctx.arc(0, 0, innerRadius * 0.3, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.fill();
+                    
+                    ctx.restore();
+                }
+            },
+            // ネジ
+            {
+                name: 'screw',
+                draw: function(ctx, x, y, size, color, rotation) {
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(rotation);
+                    ctx.fillStyle = color;
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    
+                    // ネジの頭
+                    ctx.beginPath();
+                    ctx.arc(0, 0, size, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // 十字の溝
+                    ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(-size * 0.7, 0);
+                    ctx.lineTo(size * 0.7, 0);
+                    ctx.moveTo(0, -size * 0.7);
+                    ctx.lineTo(0, size * 0.7);
+                    ctx.stroke();
+                    
+                    ctx.restore();
+                }
+            },
+            // 星
+            {
+                name: 'star',
+                draw: function(ctx, x, y, size, color, rotation) {
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(rotation);
+                    
+                    // 瞬きエフェクト
+                    let twinkleAlpha = 1;
+                    if (config.starTwinkle) {
+                        twinkleAlpha = 0.3 + 0.7 * (Math.sin(Date.now() * 0.005 + x + y) * 0.5 + 0.5);
+                    }
+                    
+                    ctx.fillStyle = color;
+                    ctx.globalAlpha = twinkleAlpha;
+                    
+                    const spikes = 5;
+                    const outerRadius = size;
+                    const innerRadius = size * 0.4;
+                    
+                    ctx.beginPath();
+                    for (let i = 0; i < spikes * 2; i++) {
+                        const angle = (i * Math.PI) / spikes;
+                        const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                        const px = Math.cos(angle) * radius;
+                        const py = Math.sin(angle) * radius;
+                        
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    // 星の中心に小さな輝き
+                    if (config.starTwinkle) {
+                        ctx.fillStyle = '#FFFFFF';
+                        ctx.globalAlpha = twinkleAlpha * 0.8;
+                        ctx.beginPath();
+                        ctx.arc(0, 0, size * 0.2, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    
+                    ctx.globalAlpha = 1;
+                    ctx.restore();
+                }
+            },
+            // ナット
+            {
+                name: 'nut',
+                draw: function(ctx, x, y, size, color, rotation) {
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(rotation);
+                    ctx.fillStyle = color;
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    
+                    // 六角形
+                    ctx.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (i * Math.PI) / 3;
+                        const px = Math.cos(angle) * size;
+                        const py = Math.sin(angle) * size;
+                        
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    // 中心の穴
+                    ctx.beginPath();
+                    ctx.arc(0, 0, size * 0.4, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                    ctx.fill();
+                    
+                    ctx.restore();
+                }
+            },
+            // ボルト
+            {
+                name: 'bolt',
+                draw: function(ctx, x, y, size, color, rotation) {
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(rotation);
+                    ctx.fillStyle = color;
+                    
+                    // ボルトの頭（六角形）
+                    ctx.beginPath();
+                    for (let i = 0; i < 6; i++) {
+                        const angle = (i * Math.PI) / 3;
+                        const px = Math.cos(angle) * size * 0.8;
+                        const py = Math.sin(angle) * size * 0.8;
+                        
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    // ボルトの軸
+                    ctx.fillRect(-size * 0.2, size * 0.8, size * 0.4, size * 1.2);
+                    
+                    ctx.restore();
+                }
+            },
+            // ゼンマイのクランク
+            {
+                name: 'crank',
+                draw: function(ctx, x, y, size, color, rotation) {
+                    ctx.save();
+                    ctx.translate(x, y);
+                    ctx.rotate(rotation);
+                    ctx.strokeStyle = color;
+                    ctx.fillStyle = color;
+                    ctx.lineWidth = 4;
+                    
+                    // L字型のクランク
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(size, 0);
+                    ctx.lineTo(size, -size * 0.6);
+                    ctx.stroke();
+                    
+                    // ハンドル
+                    ctx.beginPath();
+                    ctx.arc(size, -size * 0.6, size * 0.2, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // 中心
+                    ctx.beginPath();
+                    ctx.arc(0, 0, size * 0.15, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    ctx.restore();
+                }
+            }
+        ];
+        
+        // ランダムな色を生成
+        function getRandomColor() {
+            const colors = [
+                '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
+                '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9',
+                '#F8C471', '#82E0AA', '#F1948A', '#85C1E9', '#D7BDE2'
+            ];
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+        
+        // パーティクルクラス
+        class Part {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = -50;
+                this.size = config.minSize + Math.random() * (config.maxSize - config.minSize);
+                this.speed = config.minSpeed + Math.random() * (config.maxSpeed - config.minSpeed);
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+                this.color = getRandomColor();
+                this.type = partTypes[Math.floor(Math.random() * partTypes.length)];
+                this.opacity = 0.8 + Math.random() * 0.2;
+                this.wobble = Math.random() * 0.02;
+                this.wobbleOffset = Math.random() * Math.PI * 2;
+            }
+            
+            update() {
+                this.y += this.speed;
+                this.rotation += this.rotationSpeed;
+                this.x += Math.sin(this.y * this.wobble + this.wobbleOffset) * 0.5;
+                
+                // 画面下に出たら削除
+                return this.y < canvas.height + 100;
+            }
+            
+            draw() {
+                ctx.globalAlpha = this.opacity;
+                this.type.draw(ctx, this.x, this.y, this.size, this.color, this.rotation);
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        // キャンバスサイズを画面に合わせる
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            // 高DPIディスプレイ対応
+            const ratio = window.devicePixelRatio || 1;
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+            canvas.width = window.innerWidth * ratio;
+            canvas.height = window.innerHeight * ratio;
+            ctx.scale(ratio, ratio);
+        }
+        
+        // パーツを生成
+        function spawnParts() {
+            for (let i = 0; i < config.spawnRate; i++) {
+                if (Math.random() < 0.15) { // 15%の確率で生成（さらに減らした）
+                    parts.push(new Part());
+                }
+            }
+        }
+        
+        // アニメーションループ
+        function animate() {
+            if (!animationRunning) {
+                requestAnimationFrame(animate);
+                return;
+            }
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // パーツを生成
+            spawnParts();
+            
+            // パーツを更新・描画
+            parts = parts.filter(part => {
+                const alive = part.update();
+                if (alive) {
+                    part.draw();
+                }
+                return alive;
+            });
+            
+            requestAnimationFrame(animate);
+        }
+        
+        // 設定を更新
+        function updateConfig() {
+            config.spawnRate = parseFloat(document.getElementById('spawnRate').value);
+            config.minSize = parseInt(document.getElementById('minSize').value);
+            config.maxSize = parseInt(document.getElementById('maxSize').value);
+            config.minSpeed = parseFloat(document.getElementById('minSpeed').value);
+            config.maxSpeed = parseFloat(document.getElementById('maxSpeed').value);
+            config.starTwinkle = document.getElementById('starTwinkle').checked;
+        }
+        
+        // パーツをクリア
+        function clearParts() {
+            parts = [];
+            lightParticles = [];
+        }
+        
+        // アニメーション停止/再開
+        function toggleAnimation() {
+            animationRunning = !animationRunning;
+        }
+        
+        // コントロールパネルの表示/非表示
+        function toggleControls() {
+            const controls = document.getElementById('controls');
+            const showButton = document.getElementById('showControls');
+            
+            if (controls.classList.contains('hidden')) {
+                controls.classList.remove('hidden');
+                showButton.style.display = 'none';
+            } else {
+                controls.classList.add('hidden');
+                showButton.style.display = 'block';
+            }
+        }
+        
+        // イベントリスナー
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            // 背景画像のリサイズに対応
+            document.body.style.backgroundSize = 'cover';
+        });
+        
+        // 設定の変更を監視
+        document.querySelectorAll('input[type="range"]').forEach(input => {
+            input.addEventListener('input', updateConfig);
+        });
+        
+        // 初期化
+        resizeCanvas();
+        animate();
+        
+        // 光の粒エフェクト（追加）
+        class LightParticle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = -10;
+                this.size = 1 + Math.random() * 3;
+                this.speed = 0.5 + Math.random() * 2;
+                this.opacity = 0.3 + Math.random() * 0.7;
+                this.color = '#FFD700';
+                this.twinkle = Math.random() * 0.05;
+            }
+            
+            update() {
+                this.y += this.speed;
+                this.opacity += Math.sin(this.y * this.twinkle) * 0.1;
+                return this.y < canvas.height + 10;
+            }
+            
+            draw() {
+                ctx.globalAlpha = Math.max(0, this.opacity);
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            }
+        }
+        
+        let lightParticles = [];
+        
+        // 光の粒を追加
+        setInterval(() => {
+            if (Math.random() < 0.05 && animationRunning) { // さらに少なく
+                lightParticles.push(new LightParticle());
+            }
+            
+            // 光の粒を更新
+            lightParticles = lightParticles.filter(particle => {
+                const alive = particle.update();
+                if (alive) {
+                    particle.draw();
+                }
+                return alive;
+            });
+        }, 150); // 少し間隔を長く
+    </script>
+</body>
+</html>

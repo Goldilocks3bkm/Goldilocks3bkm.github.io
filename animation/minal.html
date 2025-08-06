@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Minal – Gear Meteor & Star Spark</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<style>
+  body{margin:0;background:#001024;display:flex;justify-content:center;align-items:center;height:100vh;}
+  canvas{image-rendering:pixelated;}
+</style>
+<script>
+// ---------- グローバル ----------
+let gears=[], sparks=[], stars=[];
+let gearImg;  // 読み込めたら画像を使う
+const GEAR_MAX = 25;     // 同時に降る歯車数
+const STAR_BASE = 120;   // 背景星ドット数
+
+function preload(){
+  // gear.png が同階層にあれば自動ロード
+  gearImg = loadImage('gear.png', ()=>{}, ()=>{ gearImg=null; });
+}
+
+function setup(){
+  createCanvas(1280,720);
+  // 背景星
+  for(let i=0;i<STAR_BASE;i++) stars.push(new BgStar());
+  // 歯車
+  for(let i=0;i<GEAR_MAX;i++) gears.push(new Gear());
+}
+
+function draw(){
+  background(0,16,32);
+  stars.forEach(s=>{s.update();s.show();});
+  gears.forEach(g=>{g.update();g.show();});
+  sparks.forEach(sp=>{sp.update();sp.show();});
+}
+
+// ---------- 背景星 ----------
+class BgStar{
+  constructor(){
+    this.x=random(width);
+    this.y=random(height);
+    this.alpha=random(120,255);
+    this.phase=random(TWO_PI);
+  }
+  update(){
+    this.alpha=150+105*sin(frameCount*0.015+this.phase);
+  }
+  show(){
+    noStroke();fill(255,this.alpha);
+    rect(this.x,this.y,1,1);
+  }
+}
+
+// ---------- 歯車 ----------
+class Gear{
+  constructor(){this.reset();}
+  reset(){
+    this.x=random(width);          // 画面上にランダム出現
+    this.y=random(height*0.2);     // 上側だけに湧く
+    this.z=random(200,800);        // 奥行
+    this.vz=random(-3,-1.5);       // 落下速度
+    this.rot=random(TWO_PI);
+    this.rotSp=random(-0.05,0.05);
+    this.col=color(random(180,255),random(140,220),random(80,160));
+    this.alive=true;
+  }
+  update(){
+    if(!this.alive) return;
+    this.z+=this.vz;
+    this.rot+=this.rotSp;
+    // フワッと横流れ
+    this.x+=sin(frameCount*0.03+this.rot)*0.3;
+    if(this.z<=0){
+      this.alive=false;
+      sparks.push(new Spark(this.x,this.y,this.col));
+      // 再利用
+      this.reset();
+    }
+  }
+  show(){
+    if(!this.alive) return;
+    let s=map(this.z,0,800,0.2,1.5); // 遠近
+    push();
+    translate(this.x,this.y);
+    rotate(this.rot);
+    scale(s);
+    if(gearImg){
+      imageMode(CENTER);
+      tint(red(this.col),green(this.col),blue(this.col));
+      image(gearImg,0,0);
+    }else{
+      // ベジェで簡易ギア
+      noStroke();fill(this.col);
+      beginShape();
+      for(let a=0;a<TWO_PI;a+=PI/6){
+        let r=18, r2=24;
+        vertex(cos(a)*r,sin(a)*r);
+        vertex(cos(a+PI/12)*r2,sin(a+PI/12)*r2);
+      }
+      endShape(CLOSE);
+      fill(0);circle(0,0,14);
+    }
+    pop();
+  }
+}
+
+// ---------- 星スパーク ----------
+class Spark{
+  constructor(x,y,baseCol){
+    this.x=x;this.y=y;
+    this.frame=0;
+    this.life=60;                  // 1秒弱
+    this.col=baseCol;
+  }
+  update(){ this.frame++; }
+  show(){
+    if(this.frame>=this.life) return;
+    let a=map(this.frame,0,this.life,0,255);
+    let s=map(this.frame,0,this.life,0,16); // 拡散
+    push();translate(this.x,this.y);
+    stroke(red(this.col),green(this.col),blue(this.col),255-a);
+    strokeWeight(2);line(-s,0,s,0);line(0,-s,0,s);
+    pop();
+    if(this.frame==this.life) {
+      // remove from array
+      sparks = sparks.filter(sp=>sp!==this);
+    }
+  }
+}
+</script>
+</head>
+<body>
+</body>
+</html>
