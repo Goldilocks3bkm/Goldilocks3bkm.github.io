@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-  <title>Audio Visualizer v6.2.1 – 超敏感(スマホ)・iOSファイル選択修正</title>
+  <title>Audio Visualizer v6.2.2 – 超敏感(スマホ)・ファイル再生修正</title>
   <!-- p5.js & sound addon -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/addons/p5.sound.min.js"></script>
@@ -111,7 +111,7 @@
   <div id="panel" aria-modal="true" role="dialog">
     <div class="handle" id="handle"><div class="bar"></div></div>
     <div class="row" style="justify-content:space-between">
-      <label c
+      <label class="pill" id="pickFileM" for="file"><span>📄</span><span>音声</span></label>
       <div class="pill" id="micM"><span>🎤</span><span>マイク</span></div>
       <div class="pill" id="playM"><span>▶</span><span>再生</span></div>
       <div class="pill" id="pauseM"><span>⏸</span><span>停止</span></div>
@@ -164,7 +164,7 @@
 
   <script>
     // ======= Audio + Analysis =======
-    let fft, amp, mic, sound, usingMic = false, fileLoaded = false;
+    let fft, amp, mic, sound, usingMic = false, fileLoaded = false, pendingPlay = false;
     let lastActiveMillis = 0; let silenceFade = 0;
     const sense = { mode: 'normal', ampScale:1.0, gate:0.008, peak:0.12, donDelta:0.08, ampSmooth:0.08 };
     function applySense(mode){
@@ -249,7 +249,7 @@
       panel.addEventListener('touchstart', onStart, {passive:true}); panel.addEventListener('touchmove', onMove, {passive:true}); panel.addEventListener('touchend', onEnd);
       handle.addEventListener('mousedown', onStart); window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onEnd); window.addEventListener('keydown', (e)=>{ if (e.key==='Escape' && panel.classList.contains('open')) openPanel(false); });
       const mapSel = (m, d)=>{ $(m).addEventListener('change', e=>{ $(d).value = e.target.value; $(d).dispatchEvent(new Event('change')); }); };
-      $('pickFileM').addEventListener('click', ()=>$('file').click()); $('micM').addEventListener('click', ()=>$('mic').click()); $('playM').addEventListener('click', ()=>$('play').click()); $('pauseM').addEventListener('click', ()=>$('pause').click()); $('recM').addEventListener('click', ()=>$('record').click());
+      /* iOS対策：ファイル選択は <label for="file"> で直接開く（JSでの click() は使わない） */ $('micM').addEventListener('click', ()=>$('mic').click()); $('playM').addEventListener('click', ()=>$('play').click()); $('pauseM').addEventListener('click', ()=>$('pause').click()); $('recM').addEventListener('click', ()=>$('record').click());
       mapSel('senseM', 'sense'); mapSel('plantAmtM','plantAmt'); mapSel('bflyAmtM','bflyAmt'); mapSel('meteorAmtM','meteorAmt'); mapSel('dustAmtM','dustAmt'); $('wakeM').addEventListener('click', ()=>toggleWake($('wakeM')));
     }
 
