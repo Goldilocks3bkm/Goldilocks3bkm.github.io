@@ -208,6 +208,17 @@
       plantPeak = new p5.PeakDetect(200, 2000, sense.peak, 14);
       textFont('Noto Sans JP, system-ui, sans-serif'); noStroke();
       applySense('normal'); calcBins(); bindUI(); bindDrawer();
+      // 監視: 読み込み完了を検知して自動再生 & 入力接続
+      const tick = () => {
+        if (sound && !fileLoaded && sound.isLoaded && sound.isLoaded()) {
+          fileLoaded = true; amp.setInput(sound); fft.setInput(sound);
+          if (pendingPlay) { try{ getAudioContext().resume(); }catch(_){ } try{ sound.play(); }catch(_){ } pendingPlay=false; }
+          const s = document.getElementById('status'); if (s) s.textContent = '読み込み完了';
+          if (sound.onended) sound.onended(()=>{ lastActiveMillis = millis()-5000; });
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
     }
 
     function calcBins(){ NUM_BINS = Math.max(24, Math.floor(width / 48)); BIN_W = width / NUM_BINS; }
@@ -217,9 +228,20 @@
     function bindUI() {
       const $ = (id)=>document.getElementById(id); const status = $('status');
       $('file').addEventListener('change', async (e) => {
-        await userStartAudio(); const f = e.target.files[0]; if (!f) return; const url = URL.createObjectURL(f);
+        await userStartAudio();
+        const f = e.target.files[0]; if (!f) return;
+        try {
+          if (sound) { try{ sound.stop(); }catch(_){} sound = null; }
+          // 直接 File を渡す（iOS/Safariのblob/urlデコード問題回避）
+          loadSound(f, () => {
+            sound = this; // 'this' は p5.SoundFile
+          }, ()=>{}, (s)=>{
+            // p5 v1.9 互換: 第3引数が onload の場合があるので念のため
+          });
+        } catch(err) { console.error(err); }
+      }); const f = e.target.files[0]; if (!f) return; const url = URL.createObjectURL(f);
         if (sound && sound.isPlaying()) sound.stop();
-        sound = loadSound(url, () => { fileLoaded = true; usingMic = false; amp.setInput(sound); fft.setInput(sound); status.textContent = 'ファイル読み込み完了'; sound.onended(()=>{ lastActiveMillis = millis()-5000; }); }, (err)=>{ status.textContent='読み込み失敗'; console.error(err); });
+        /* ファイル読み込みは change ハンドラで処理するためここでは新たに loadSound しない */ fft.setInput(sound); status.textContent = 'ファイル読み込み完了'; if (sound && sound.onended) sound.onended(()=>{ lastActiveMillis = millis()-5000; }); }, (err)=>{ status.textContent='読み込み失敗'; console.error(err); });
       });
       $('mic').addEventListener('click', async () => {
         await userStartAudio(); if (sound && sound.isPlaying()) { try{ sound.stop(); }catch(e){} }
@@ -228,8 +250,21 @@
           const ac = getAudioContext(); if (destNode && mic && mic.stream) { try { if (micToDest) micToDest.disconnect(); micToDest = ac.createMediaStreamSource(mic.stream); micToDest.connect(destNode); } catch(e){} }
         }, (err)=>{ status.textContent='マイク許可エラー'; console.error(err); });
       });
-      $('play').addEventListener('click', async ()=>{ await userStartAudio(); if (sound&&fileLoaded){ if(!sound.isPlaying()) sound.play(); status.textContent='再生中'; } });
-      $('pause').addEventListener('click', ()=>{ if (sound&&sound.isPlaying()){ sound.pause(); status.textContent='一時停止'; } });
+      $('play').addEventListener('click', async () => {
+        await userStartAudio();
+        try { getAudioContext().resume(); } catch(_){ }
+        const status = document.getElementById('status');
+        if (sound && sound.isLoaded && sound.isLoaded()) {
+          if (!sound.isPlaying()) sound.play();
+          if (status) status.textContent='再生中';
+        } else {
+          pendingPlay = true;
+          if (status) status.textContent='読み込み中… → 読み込み後に自動再生';
+        }
+      }); if (sound&&fileLoaded){ if(!sound.isPlaying()) sound.play(); status.textContent='再生中'; } });
+      $('pause').addEventListener('click', () => {
+        if (sound && sound.isPlaying && sound.isPlaying()) { sound.pause(); const s=document.getElementById('status'); if(s) s.textContent='一時停止'; }
+      }); status.textContent='一時停止'; } });
       $('record').addEventListener('click', async ()=>{ if(!mediaRecorder){ await startRecording(); $('record').textContent='録画停止'; $('record').classList.add('active'); } else { await stopRecording(); $('record').textContent='録画開始'; $('record').classList.remove('active'); } });
       $('sense').addEventListener('change', (e)=>applySense(e.target.value));
       $('plantAmt').addEventListener('change', (e)=>amount.plant=parseFloat(e.target.value));
