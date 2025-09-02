@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-  <title>Audio Visualizer v6.2.2 – 超敏感(スマホ)・ファイル再生修正</title>
+  <title>Audio Visualizer v6.2.3 – 超敏感(スマホ)・Safariドロワー修正</title>
   <!-- p5.js & sound addon -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/addons/p5.sound.min.js"></script>
@@ -52,7 +52,16 @@
     .active { outline: 1px solid rgba(255,255,255,0.45); }
     a { color: #9ec5ff; }
     @media (max-width: 680px) { #ui { display:none; } #legend { display:none; } #fab { display:block; } }
-  </style>
+    /* --- Safariタップ不達防止: キャンバスは背面＆クリック無効化 --- */
+  canvas { position: fixed !important; inset: 0 !important; z-index: 0 !important; pointer-events: none !important; }
+  /* レイヤーの見直し */
+  #panel { z-index: 900; }
+  #backdrop { z-index: 800; }
+  #fab { z-index: 700; }
+  /* 画面下エッジからの緊急オープナー（FABが押せない機種対策） */
+  #edgeOpen { position: fixed; left: 0; right: 0; bottom: 0; height: 28px; z-index: 650; background: transparent; display: none; }
+  @media (max-width: 680px) { #edgeOpen { display:block; } }
+</style>
 </head>
 <body>
   <!-- Desktop/Tablet controls -->
@@ -108,6 +117,7 @@
   <!-- Mobile: backdrop + drawer -->
   <div id="backdrop"></div>
   <button id="fab">⚙️</button>
+  <div id="edgeOpen" aria-hidden="true"></div>
   <div id="panel" aria-modal="true" role="dialog">
     <div class="handle" id="handle"><div class="bar"></div></div>
     <div class="row" style="justify-content:space-between">
@@ -275,9 +285,12 @@
     }
 
     function bindDrawer(){
-      const $ = (id)=>document.getElementById(id); const panel=$('panel'), fab=$('fab'), backdrop=$('backdrop'), handle=$('handle');
+      const $ = (id)=>document.getElementById(id); const panel=$('panel'), fab=$('fab'), backdrop=$('backdrop'), handle=$('handle'), edge=$('edgeOpen');
       const openPanel = (open)=>{ panel.classList.toggle('open', open); backdrop.style.display = open ? 'block' : 'none'; document.body.style.overflow = open ? 'hidden' : ''; };
-      fab.addEventListener('click', ()=>openPanel(true)); $('closeM').addEventListener('click', ()=>openPanel(false)); backdrop.addEventListener('click', ()=>openPanel(false));
+      fab.addEventListener('click', ()=>openPanel(true));
+      // FABが押せない端末向け: 画面下エッジタップ/スワイプで開く
+      edge.addEventListener('click', ()=>openPanel(true));
+      edge.addEventListener('touchstart', ()=>openPanel(true), {passive:true}); $('closeM').addEventListener('click', ()=>openPanel(false)); backdrop.addEventListener('click', ()=>openPanel(false));
       let startY=null, lastY=null; const onStart=(e)=>{ startY = (e.touches?e.touches[0].clientY:e.clientY); lastY=startY; };
       const onMove=(e)=>{ if (startY==null) return; const y = (e.touches?e.touches[0].clientY:e.clientY); lastY = y; const dy = y - startY; if (dy>0){ panel.style.bottom = Math.min(dy, window.innerHeight*0.6) * -1 + 'px'; } };
       const onEnd=()=>{ if (startY==null) return; const dy = lastY - startY; panel.style.bottom = ''; if (dy > 60) openPanel(false); startY=null; lastY=null; };
