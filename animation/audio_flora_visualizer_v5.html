@@ -2,378 +2,573 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-  <title>Audio Visualizer v6.2.4 – ファイル読み込み安定化 & Safari修正</title>
-  <!-- p5.js & sound addon -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Audio Visualizer v3 – 草/花/鳥/蝶/芋虫 + 雨粒/☆ + 録画</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/addons/p5.sound.min.js"></script>
   <style>
-    :root { color-scheme: dark; --glass: rgba(255,255,255,0.08); --line: rgba(255,255,255,0.16); }
-    html, body { margin:0; padding:0; background:#0b0b0f; color:#eee; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans JP", sans-serif; }
-    /* Top/desktop panel */
+    :root { color-scheme: dark; }
+    html, body { margin:0; padding:0; background:#090a10; color:#eef2ff; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans JP", sans-serif; }
     #ui {
       position: fixed; left: 16px; top: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-      background: var(--glass); border: 1px solid var(--line);
-      padding: 8px 10px; border-radius: 12px; backdrop-filter: blur(6px); z-index:3;
+      background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1);
+      padding: 8px 10px; border-radius: 12px; backdrop-filter: blur(6px);
+      max-width: min(92vw, 760px);
     }
-    #ui button, #ui label, #ui select, #ui summary {
+    #ui button, #ui label, #ui input, #ui select {
       appearance: none; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08);
-      color: #eee; padding: 6px 10px; border-radius: 10px; cursor: pointer; font-size: 12px;
+      color: #eef2ff; padding: 6px 10px; border-radius: 10px; cursor: pointer; font-size: 13px;
     }
-    #ui select { padding: 6px 8px; }
-    #ui button:hover, #ui label:hover { background: rgba(255,255,255,0.16); }
-    #file { position:absolute; width:0.1px; height:0.1px; opacity:0; overflow:hidden; z-index:-1; }
+    #ui input[type="range"] { width: 120px; cursor: ew-resize; }
+    #ui .group { display:flex; gap:8px; align-items:center; }
+    #ui .muted { opacity:.8; font-size:12px; border:none; background:transparent; padding:0; cursor:default; }
+    #file { display:none; }
     #legend {
       position: fixed; right: 16px; top: 16px; font-size: 12px; line-height: 1.45;
       color: #cfd7ff; opacity: .9; background: rgba(16,16,24,.35); border: 1px solid rgba(255,255,255,.08);
-      padding: 8px 10px; border-radius: 10px; z-index:2; max-width: 42ch;
+      padding: 8px 10px; border-radius: 10px; max-width: 42ch;
     }
-    #fab { /* mobile gear button */
-      position: fixed; right: 14px; bottom: 14px; z-index: 5;
-      border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.15);
-      color:#fff; padding: 12px; border-radius: 999px; cursor: pointer; font-size: 16px; display:none;
-    }
-    #backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 4; display:none; }
-    #panel { /* mobile drawer */
-      position: fixed; left: 0; right: 0; bottom: -70vh; height: 60vh; z-index: 6;
-      background: rgba(20,20,28,0.95); backdrop-filter: blur(10px);
-      border-top: 1px solid rgba(255,255,255,0.14);
-      transition: bottom 0.25s ease; padding: 8px 12px 12px; border-radius: 14px 14px 0 0;
-      touch-action: none;
-    }
-    #panel.open { bottom: 0; }
-    #panel .handle { display:flex; justify-content:center; padding: 6px 0 10px; }
-    #panel .handle .bar { width: 44px; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.35); }
-    #panel .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
-    #panel .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    #panel h4 { margin: 4px 0 6px; font-size: 13px; opacity: .9; }
-    #panel select, #panel button, #panel label { font-size: 14px; padding: 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08); color:#eee; }
-    .pill { display:inline-flex; gap:6px; align-items:center; padding:6px 10px; border:1px solid rgba(255,255,255,0.18); border-radius: 999px; background: rgba(255,255,255,0.08); font-size:12px; cursor:pointer; }
-    .active { outline: 1px solid rgba(255,255,255,0.45); }
+    #legend.hidden { display:none; }
+    #reopen { position: fixed; left: 16px; top: 16px; display:none; }
+    #reopen button { appearance:none; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.08); color:#eef2ff; padding:8px 10px; border-radius:12px; }
     a { color: #9ec5ff; }
-    @media (max-width: 680px) { #ui { display:none; } #legend { display:none; } #fab { display:block; } }
-    /* --- Safariタップ不達防止: キャンバスは背面＆クリック無効化 --- */
-  canvas { position: fixed !important; inset: 0 !important; z-index: 0 !important; pointer-events: none !important; }
-  /* レイヤーの見直し */
-  #panel { z-index: 900; }
-  #backdrop { z-index: 800; }
-  #fab { z-index: 700; }
-  /* 画面下エッジからの緊急オープナー（FABが押せない機種対策） */
-  #edgeOpen { position: fixed; left: 0; right: 0; bottom: 0; height: 28px; z-index: 650; background: transparent; display: none; }
-  @media (max-width: 680px) { #edgeOpen { display:block; } }
-</style>
+  </style>
 </head>
 <body>
-  <!-- Desktop/Tablet controls -->
   <div id="ui">
-    <label for="file">音声ファイル</label><input id="file" type="file" accept="audio/*"/>
-    <button id="mic">マイク</button>
-    <button id="play">再生</button>
-    <button id="pause">一時停止</button>
-    <button id="record">録画開始</button>
-    <details id="adv"><summary>⚙️ 調整</summary>
-      <div class="row">
-        <label>音量感度</label>
-        <select id="sense">
-          <option value="low">鈍感</option>
-          <option value="normal" selected>ふつう</option>
-          <option value="high">敏感</option>
-          <option value="ultra">超敏感(スマホ)</option>
-        </select>
-        <label>画面ON</label><button id="wake">OFF</button>
-      </div>
-      <div class="row">
-        <label>双葉/花 量</label>
-        <select id="plantAmt">
-          <option value="0.6">少なめ</option>
-          <option value="1" selected>ふつう</option>
-          <option value="1.6">多め</option>
-        </select>
-        <label>🦋 量</label>
-        <select id="bflyAmt">
-          <option value="0.3" selected>控えめ</option>
-          <option value="1">ふつう</option>
-          <option value="1.6">多め</option>
-        </select>
-      </div>
-      <div class="row">
-        <label>☄️ 流星 量</label>
-        <select id="meteorAmt">
-          <option value="0.6" selected>少なめ</option>
-          <option value="1">ふつう</option>
-          <option value="1.6">多め</option>
-        </select>
-        <label>✨ 星 量</label>
-        <select id="dustAmt">
-          <option value="0.6">少なめ</option>
-          <option value="1" selected>ふつう</option>
-          <option value="1.6">多め</option>
-        </select>
-      </div>
-    </details>
-    <span id="status" style="margin-left:8px; font-size:12px; opacity:.85;">準備中</span>
-  </div>
-
-  <!-- Mobile: backdrop + drawer -->
-  <div id="backdrop"></div>
-  <button id="fab">⚙️</button>
-  <div id="edgeOpen" aria-hidden="true"></div>
-  <div id="panel" aria-modal="true" role="dialog">
-    <div class="handle" id="handle"><div class="bar"></div></div>
-    <div class="row" style="justify-content:space-between">
-      <label class="pill" id="pickFileM" for="file"><span>📄</span><span>音声</span></label>
-      <div class="pill" id="micM"><span>🎤</span><span>マイク</span></div>
-      <div class="pill" id="playM"><span>▶</span><span>再生</span></div>
-      <div class="pill" id="pauseM"><span>⏸</span><span>停止</span></div>
-      <div class="pill" id="recM"><span>⏺</span><span>録画</span></div>
-      <div class="pill" id="closeM"><span>⬇</span><span>閉じる</span></div>
+    <div class="group">
+      <label for="file">音声ファイル</label><input id="file" type="file" accept="audio/*"/>
+      <button id="mic">マイク</button>
+      <button id="play">再生</button>
+      <button id="pause">一時停止</button>
+      <span id="status" class="muted">準備中</span>
     </div>
-    <h4>音量感度</h4>
-    <div class="row">
-      <select id="senseM">
-        <option value="low">鈍感</option>
-        <option value="normal" selected>ふつう</option>
-        <option value="high">敏感</option>
-        <option value="ultra">超敏感(スマホ)</option>
-      </select>
-      <label>画面ON</label><button id="wakeM">OFF</button>
+    <div class="group">
+      <label><input type="checkbox" id="levelMode" checked/> 音量依存</label>
+      <label>🐦出現倍率 <input type="range" id="birdScale" min="0.5" max="3.0" step="0.1" value="1.8"/></label>
+      <label>ノイズ感度 <input type="range" id="noiseSens" min="0.5" max="1.0" step="0.01" value="0.70"/></label>
     </div>
-    <h4>量の調整</h4>
-    <div class="grid">
-      <div><label>双葉/花</label>
-        <select id="plantAmtM">
-          <option value="0.6">少</option><option value="1" selected>普</option><option value="1.6">多</option>
-        </select>
-      </div>
-      <div><label>🦋</label>
-        <select id="bflyAmtM">
-          <option value="0.3" selected>控</option><option value="1">普</option><option value="1.6">多</option>
-        </select>
-      </div>
-      <div><label>☄️</label>
-        <select id="meteorAmtM">
-          <option value="0.6" selected>少</option><option value="1">普</option><option value="1.6">多</option>
-        </select>
-      </div>
-      <div><label>✨</label>
-        <select id="dustAmtM">
-          <option value="0.6">少</option><option value="1" selected>普</option><option value="1.6">多</option>
-        </select>
-      </div>
+    <div class="group">
+      <button id="toggleLegend">説明の表示/非表示</button>
+      <button id="collapseUI">UI最小化</button>
+    </div>
+    <div class="group">
+      <button id="recStart">● 録画開始</button>
+      <button id="recStop" disabled>■ 停止</button>
+      <a id="download" class="muted" href="#" download="visualizer.webm"></a>
     </div>
   </div>
+  <div id="reopen"><button id="reopenBtn">⚙️</button></div>
 
-  <div id="legend">
-    <div>— 白い線: 基準</div>
-    <div>🌱 双葉・🌼 花: 200–2000Hz（<b>同一地点は最大3本</b>）</div>
-    <div>🦋 ちょうちょ: <b>2000Hz以上</b>（小さく少なめ）</div>
-    <div>✨ 星キラキラ: 風景ノイズ（スペクトル平坦さ）</div>
-    <div>☄️ 長い流星: 低/超高帯域 or 大きな音量<br>※<b>ドン！</b>は優先して<b>花バースト</b></div>
-    <div>無音/終了 → 白線のみ</div>
+  <div id="legend" class="hidden">
+    <div>帯域は一般的な楽曲向けに調整、位置はサブバンド内のログ周波数分布で全幅にマップ。</div>
+    <hr/>
+    <div>💧 40–180Hz: 雨粒（大）</div>
+    <div>🌱 180–500Hz: 草（量1/10）</div>
+    <div>🌼 500–1000Hz: 花</div>
+    <div>🦋 1–3kHz: ちょうちょ</div>
+    <div>🐦 3–6kHz: 鳥（白線に着地）</div>
+    <div>⭐ 6–12kHz: 星（大）</div>
+    <div>⭐（小） 短いピーク: 星（小）</div>
+    <div>⋯ スペクトル平坦度: 空の塵</div>
   </div>
 
   <script>
-    // ======= Audio + Analysis =======
-    let fft, amp, mic, sound, usingMic = false, fileLoaded = false, pendingPlay = false;
-    let lastActiveMillis = 0; let silenceFade = 0;
-    const sense = { mode: 'normal', ampScale:1.0, gate:0.008, peak:0.12, donDelta:0.08, ampSmooth:0.08 };
-    function applySense(mode){
-      sense.mode = mode;
-      if (mode==='low'){ sense.ampScale=0.85; sense.gate=0.012; sense.peak=0.16; sense.donDelta=0.11; sense.ampSmooth=0.12; }
-      else if (mode==='high'){ sense.ampScale=1.2; sense.gate=0.005; sense.peak=0.09; sense.donDelta=0.06; sense.ampSmooth=0.06; }
-      else if (mode==='ultra'){ // スマホ向け 超敏感
-        sense.ampScale=2.0; sense.gate=0.0025; sense.peak=0.075; sense.donDelta=0.035; sense.ampSmooth=0.03;
-      } else { sense.ampScale=1.0; sense.gate=0.008; sense.peak=0.12; sense.donDelta=0.08; sense.ampSmooth=0.08; }
-      if (amp) amp.smooth(sense.ampSmooth);
-      if (plantPeak) plantPeak.threshold = sense.peak;
-      const s = document.getElementById('status'); if (s) s.textContent = '感度: ' + mode;
-    }
+    // ======= Audio =======
+    let fft, amp, mic, sound, usingMic = false, fileLoaded = false;
+    let peak;
+    let lastActiveMillis = 0;
+    let silenceFade = 0;
 
     // ======= Visual State =======
-    const plants = [], butterflies = [], dustStars = [], meteors = [];
-    let baselineY, prevLevel = 0, donCooldown = 0;
-    let NUM_BINS = 36, BIN_W = 0;
-    const E = { level:0, plantBand:0, bflyBand:0, bass:0, ultra:0, entropy:0 };
-    let plantPeak;
+    const plants = [], birds = [], butterflies = [], caterpillars = [];
+    const stars = [], bigStars = [], drops = [], dust = [];
+    let baselineY;
 
-    // Amount multipliers
-    const amount = { plant:1, bfly:0.33, meteor:0.6, dust:1 };
+    const MAX_COUNTS = { plants: 220, birds: 14, butterflies: 18, caterpillars: 2, stars: 180, bigStars: 50, drops: 50, dust: 240 };
+    const COOLDOWN   = { bird: 200, star: 50, bigStar: 70, drop: 70, caterpillar: 6000 };
+    let lastSpawn    = { bird: -9e9, star: -9e9, bigStar: -9e9, drop: -9e9, caterpillar: -9e9 };
 
-    // Threshold helpers (超敏感時は下げる)
-    const TH = { plant: ()=> sense.mode==='ultra'? 55 : 70, bfly: ()=> sense.mode==='ultra'? 110 : 130 };
+    // Toggles / sliders
+    let levelModeEl, birdScaleEl, noiseSensEl;
+    let noiseStart = 0.70;
 
-    // Wake Lock
-    let wakeLock = null;
-    async function toggleWake(btn){
-      try{ if (!wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); btn.textContent='ON'; } else { await wakeLock.release(); wakeLock=null; btn.textContent='OFF'; } }catch(e){ console.warn('wake lock:', e); btn.textContent='NG'; }
-    }
+    // EMA for volume-insensitive mode
+    const ema = { bass: 110, grass: 120, flower: 120, bfly: 120, bird: 120, high: 120 };
+    const emaAlpha = 0.05;
 
-    // Recording nodes
-    let mediaRecorder = null, recordedChunks = [], destNode = null, micToDest = null;
+    // ======= Recording =======
+    let recorder, recordedChunks = [], recording = false, combinedStream;
 
     function setup() {
       createCanvas(window.innerWidth, window.innerHeight);
-      pixelDensity(window.devicePixelRatio || 1); baselineY = height * 0.85;
-      fft = new p5.FFT(0.85, 1024); amp = new p5.Amplitude(); amp.smooth(sense.ampSmooth);
-      plantPeak = new p5.PeakDetect(200, 2000, sense.peak, 14);
-      textFont('Noto Sans JP, system-ui, sans-serif'); noStroke();
-      applySense('normal'); calcBins(); bindUI(); bindDrawer();
-      // 監視: 読み込み完了を検知して自動再生 & 入力接続
-      const tick = () => {
-        if (sound && !fileLoaded && sound.isLoaded && sound.isLoaded()) {
-          fileLoaded = true; amp.setInput(sound); fft.setInput(sound);
-          if (pendingPlay) { try{ getAudioContext().resume(); }catch(_){ } try{ sound.play(); }catch(_){ } pendingPlay=false; }
-          const s = document.getElementById('status'); if (s) s.textContent = '読み込み完了';
-          if (sound.onended) sound.onended(()=>{ lastActiveMillis = millis()-5000; });
-        }
-        requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    }
+      pixelDensity(window.devicePixelRatio || 1);
+      baselineY = height * 0.85;
 
-    function calcBins(){ NUM_BINS = Math.max(24, Math.floor(width / 48)); BIN_W = width / NUM_BINS; }
-    function xToBin(x){ return Math.max(0, Math.min(NUM_BINS-1, Math.floor(x / BIN_W))); }
-    function countPlantsInBin(bi){ let c=0; for (let p of plants){ if (!p.dead && xToBin(p.x)===bi) c++; } return c; }
+      fft = new p5.FFT(0.8, 1024);
+      amp = new p5.Amplitude();
+      peak = new p5.PeakDetect(20, 12000, 0.17, 20);
 
-    function bindUI() {
-      const $ = (id)=>document.getElementById(id); const status = $('status');
-      $('file').addEventListener('change', async (e) => {
+      const fileInput = document.getElementById('file');
+      const micBtn = document.getElementById('mic');
+      const playBtn = document.getElementById('play');
+      const pauseBtn = document.getElementById('pause');
+      levelModeEl = document.getElementById('levelMode');
+      birdScaleEl = document.getElementById('birdScale');
+      noiseSensEl = document.getElementById('noiseSens');
+      document.getElementById('toggleLegend').addEventListener('click', ()=>{
+        document.getElementById('legend').classList.toggle('hidden');
+      });
+      document.getElementById('collapseUI').addEventListener('click', ()=>{
+        document.getElementById('ui').style.display = 'none';
+        document.getElementById('reopen').style.display = 'block';
+      });
+      document.getElementById('reopenBtn').addEventListener('click', ()=>{
+        document.getElementById('ui').style.display = 'flex';
+        document.getElementById('reopen').style.display = 'none';
+      });
+      noiseSensEl.addEventListener('input', ()=>{ noiseStart = parseFloat(noiseSensEl.value); });
+
+      fileInput.addEventListener('change', async (e) => {
         await userStartAudio();
-        const f = e.target.files[0];
-        const status = document.getElementById('status');
-        if (!f) return;
-        try { getAudioContext().resume(); } catch(_){ }
-        // 既存の再生を停止・切断
-        if (sound) { try{ sound.stop(); }catch(_){ } try{ sound.disconnect && sound.disconnect(); }catch(_){ } sound = null; }
-        fileLoaded = false; usingMic = false; // マイクではない
-        // ロード成功時の処理
-        const onSuccess = (sf) => {
-          sound = sf; fileLoaded = true;
-          try { amp.setInput(sound); fft.setInput(sound); } catch(_){ }
-          if (status) status.textContent = '読み込み完了';
-          if (pendingPlay) { try{ sound.play(); }catch(_){ } pendingPlay = false; }
-          if (sound && sound.onended) sound.onended(()=>{ lastActiveMillis = millis() - 5000; });
-        };
-        // ロード失敗時は URL フォールバック
-        const onError = (err) => {
-          console.warn('loadSound(file) failed, fallback to blob URL', err);
-          const url = URL.createObjectURL(f);
-          loadSound(url, (sf2)=>{ URL.revokeObjectURL(url); onSuccess(sf2); }, (err2)=>{ URL.revokeObjectURL(url); if (status) status.textContent='読み込み失敗'; console.error(err2); });
-        };
-        try {
-          if (status) status.textContent = '読み込み中…';
-          loadSound(f, onSuccess, onError);
-        } catch (e1) {
-          onError(e1);
-        }
+        stopAllAudio();
+        const file = e.target.files[0];
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        sound = loadSound(url, () => {
+          fileLoaded = true;
+          usingMic = false;
+          amp.setInput(sound);
+          fft.setInput(sound);
+          document.getElementById('status').textContent = 'ファイル読み込み完了';
+          sound.onended(() => { lastActiveMillis = millis() - 5000; });
+        }, () => {
+          document.getElementById('status').textContent = '読み込み失敗';
+        });
       });
-        const f = e.target.files[0]; if (!f) return;
-        try {
-          if (sound) { try{ sound.stop(); }catch(_){} sound = null; }
-          // 直接 File を渡す（iOS/Safariのblob/urlデコード問題回避）
-          loadSound(f, () => {
-            sound = this; // 'this' は p5.SoundFile
-          }, ()=>{}, (s)=>{
-            // p5 v1.9 互換: 第3引数が onload の場合があるので念のため
-          });
-        } catch(err) { console.error(err); }
-      }); const f = e.target.files[0]; if (!f) return; const url = URL.createObjectURL(f);
-        if (sound && sound.isPlaying()) sound.stop();
-        /* ファイル読み込みは change ハンドラで処理するためここでは新たに loadSound しない */ fft.setInput(sound); status.textContent = 'ファイル読み込み完了'; if (sound && sound.onended) sound.onended(()=>{ lastActiveMillis = millis()-5000; }); }, (err)=>{ status.textContent='読み込み失敗'; console.error(err); });
-      });
-      $('mic').addEventListener('click', async () => {
-        await userStartAudio(); if (sound && sound.isPlaying()) { try{ sound.stop(); }catch(e){} }
-        if (!mic) mic = new p5.AudioIn();
-        mic.start(() => { usingMic=true; fileLoaded=false; amp.setInput(mic); fft.setInput(mic); status.textContent='マイク入力中';
-          const ac = getAudioContext(); if (destNode && mic && mic.stream) { try { if (micToDest) micToDest.disconnect(); micToDest = ac.createMediaStreamSource(mic.stream); micToDest.connect(destNode); } catch(e){} }
-        }, (err)=>{ status.textContent='マイク許可エラー'; console.error(err); });
-      });
-      $('play').addEventListener('click', async () => {
+
+      micBtn.addEventListener('click', async () => {
         await userStartAudio();
-        try { getAudioContext().resume(); } catch(_){ }
-        const status = document.getElementById('status');
-        if (sound && sound.isLoaded && sound.isLoaded()) {
+        stopAllAudio();
+        mic = new p5.AudioIn();
+        mic.start(() => {
+          usingMic = true; fileLoaded = false;
+          amp.setInput(mic); fft.setInput(mic);
+          document.getElementById('status').textContent = 'マイク入力中';
+        }, () => { document.getElementById('status').textContent = 'マイク許可エラー'; });
+      });
+
+      playBtn.addEventListener('click', async () => {
+        await userStartAudio();
+        if (sound && fileLoaded) {
           if (!sound.isPlaying()) sound.play();
-          if (status) status.textContent='再生中';
-        } else {
-          pendingPlay = true;
-          if (status) status.textContent='読み込み中… → 読み込み後に自動再生';
+          document.getElementById('status').textContent = '再生中';
         }
-      }); if (sound&&fileLoaded){ if(!sound.isPlaying()) sound.play(); status.textContent='再生中'; } });
-      $('pause').addEventListener('click', () => {
-        if (sound && sound.isPlaying && sound.isPlaying()) { sound.pause(); const s=document.getElementById('status'); if(s) s.textContent='一時停止'; }
-      }); status.textContent='一時停止'; } });
-      $('record').addEventListener('click', async ()=>{ if(!mediaRecorder){ await startRecording(); $('record').textContent='録画停止'; $('record').classList.add('active'); } else { await stopRecording(); $('record').textContent='録画開始'; $('record').classList.remove('active'); } });
-      $('sense').addEventListener('change', (e)=>applySense(e.target.value));
-      $('plantAmt').addEventListener('change', (e)=>amount.plant=parseFloat(e.target.value));
-      $('bflyAmt').addEventListener('change', (e)=>amount.bfly=parseFloat(e.target.value));
-      $('meteorAmt').addEventListener('change', (e)=>amount.meteor=parseFloat(e.target.value));
-      $('dustAmt').addEventListener('change', (e)=>amount.dust=parseFloat(e.target.value));
-      $('wake').addEventListener('click', ()=>toggleWake($('wake')));
+      });
+      pauseBtn.addEventListener('click', () => {
+        if (sound && sound.isPlaying()) {
+          sound.pause();
+          document.getElementById('status').textContent = '一時停止';
+        }
+      });
+
+      // Recording
+      document.getElementById('recStart').addEventListener('click', startRecording);
+      document.getElementById('recStop').addEventListener('click', stopRecording);
     }
 
-    function bindDrawer(){
-      const $ = (id)=>document.getElementById(id); const panel=$('panel'), fab=$('fab'), backdrop=$('backdrop'), handle=$('handle'), edge=$('edgeOpen');
-      const openPanel = (open)=>{ panel.classList.toggle('open', open); backdrop.style.display = open ? 'block' : 'none'; document.body.style.overflow = open ? 'hidden' : ''; };
-      fab.addEventListener('click', ()=>openPanel(true));
-      // FABが押せない端末向け: 画面下エッジタップ/スワイプで開く
-      edge.addEventListener('click', ()=>openPanel(true));
-      edge.addEventListener('touchstart', ()=>openPanel(true), {passive:true}); $('closeM').addEventListener('click', ()=>openPanel(false)); backdrop.addEventListener('click', ()=>openPanel(false));
-      let startY=null, lastY=null; const onStart=(e)=>{ startY = (e.touches?e.touches[0].clientY:e.clientY); lastY=startY; };
-      const onMove=(e)=>{ if (startY==null) return; const y = (e.touches?e.touches[0].clientY:e.clientY); lastY = y; const dy = y - startY; if (dy>0){ panel.style.bottom = Math.min(dy, window.innerHeight*0.6) * -1 + 'px'; } };
-      const onEnd=()=>{ if (startY==null) return; const dy = lastY - startY; panel.style.bottom = ''; if (dy > 60) openPanel(false); startY=null; lastY=null; };
-      panel.addEventListener('touchstart', onStart, {passive:true}); panel.addEventListener('touchmove', onMove, {passive:true}); panel.addEventListener('touchend', onEnd);
-      handle.addEventListener('mousedown', onStart); window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onEnd); window.addEventListener('keydown', (e)=>{ if (e.key==='Escape' && panel.classList.contains('open')) openPanel(false); });
-      const mapSel = (m, d)=>{ $(m).addEventListener('change', e=>{ $(d).value = e.target.value; $(d).dispatchEvent(new Event('change')); }); };
-      /* iOS対策：ファイル選択は <label for="file"> で直接開く（JSでの click() は使わない） */ $('micM').addEventListener('click', ()=>$('mic').click()); $('playM').addEventListener('click', ()=>$('play').click()); $('pauseM').addEventListener('click', ()=>$('pause').click()); $('recM').addEventListener('click', ()=>$('record').click());
-      mapSel('senseM', 'sense'); mapSel('plantAmtM','plantAmt'); mapSel('bflyAmtM','bflyAmt'); mapSel('meteorAmtM','meteorAmt'); mapSel('dustAmtM','dustAmt'); $('wakeM').addEventListener('click', ()=>toggleWake($('wakeM')));
+    function windowResized() {
+      resizeCanvas(window.innerWidth, window.innerHeight);
+      baselineY = height * 0.85;
     }
 
-    function windowResized() { resizeCanvas(window.innerWidth, window.innerHeight); baselineY = height * 0.85; calcBins(); }
-    function stopAllAudio() { if (sound){ try{sound.stop();}catch(e){} } }
-
-    function draw() {
-      background(11, 11, 15, 255);
-      const spectrum = fft.analyze(); let level = amp.getLevel() * sense.ampScale; level = Math.min(Math.max(level,0),1);
-      E.level = lerp(E.level, level, 0.2); plantPeak.update(fft);
-      const active = level > sense.gate || (sound && sound.isPlaying()); if (active) lastActiveMillis = millis(); const silentFor = millis() - lastActiveMillis; silenceFade = (silentFor > 900) ? Math.min(1, silenceFade + 0.03) : Math.max(0, silenceFade - 0.05);
-      stroke(255); strokeWeight(3); line(0, baselineY, width, baselineY); noStroke();
-      const plantBand = fft.getEnergy(200, 2000), bflyBand = fft.getEnergy(2000, 8000), bass = fft.getEnergy(20, 120), ultra = fft.getEnergy(8000, 16000);
-      let sum = 0; for (let i=0;i<spectrum.length;i++) sum += spectrum[i] + 1e-6; let entropy = 0; for (let i=0;i<spectrum.length;i++){ const p = (spectrum[i]+1e-6)/sum; entropy += -p*Math.log(p); } entropy = entropy / Math.log(spectrum.length);
-      E.plantBand = lerp(E.plantBand, plantBand, 0.25); E.bflyBand  = lerp(E.bflyBand,  bflyBand,  0.25); E.bass = lerp(E.bass, bass, 0.25); E.ultra = lerp(E.ultra, ultra, 0.25); E.entropy = lerp(E.entropy, entropy, 0.25);
-      const dustCount = Math.floor(map(E.entropy, 0.6, 1.0, 0, 10*amount.dust, true)); for (let i=0;i<dustCount;i++) dustStars.push(new DustStar(random(width), random(height*0.05, height*0.65), E.entropy));
-      const delta = Math.max(0, level - prevLevel); prevLevel = level; if (delta > sense.donDelta && level > sense.gate*2) { donCooldown = 22; const clusters = Math.floor(random(1, 3 + amount.plant)); for (let c=0;c<clusters;c++){ const center = random(width); const n = Math.floor(random(3, 6) * amount.plant); for (let i=0;i<n;i++){ const x = Math.min(Math.max(center + random(-24, 24), 0), width); spawnPlantSmart(E.plantBand, x); } } }
-      if (donCooldown>0) donCooldown--;
-      if (E.plantBand > TH.plant() && random() < 0.35 * amount.plant) spawnPlantSmart(E.plantBand);
-      if (plantPeak.isDetected) { const burst = Math.floor(random(3, 7) * amount.plant); for (let i=0;i<burst;i++) spawnPlantSmart(E.plantBand); }
-      const bflyProbBase = (sense.mode==='ultra'? 0.016 : 0.012); const idleProb = (sense.mode==='ultra'? 0.005 : 0.003);
-      if ((E.bflyBand > TH.bfly() && random() < bflyProbBase * amount.bfly) || random() < idleProb * amount.bfly) { butterflies.push(new Butterfly(random(width), random(height*0.35, height*0.75), 0.45)); }
-      const meteorTrig = (E.level > 0.2) || (E.bass > 130) || (E.ultra > 130); if (donCooldown===0 && meteorTrig && meteors.length < 6 && random() < 0.22 * amount.meteor) { const dir = random([-1, 1]); const startX = (dir>0 ? random(width*0.05, width*0.45) : random(width*0.55, width*0.95)); const startY = random(height*0.05, height*0.5); const vx = dir * random(7.5, 10.5); const vy = random(6.0, 9.0); meteors.push(new Meteor(startX, startY, vx, vy, Math.floor(random(28, 50)))); }
-      for (let i = dustStars.length-1; i>=0; i--) { dustStars[i].update(); dustStars[i].draw(silenceFade); if (dustStars[i].dead) dustStars.splice(i,1); }
-      for (let i = meteors.length-1; i>=0; i--) { meteors[i].update(); meteors[i].draw(silenceFade); if (meteors[i].dead) meteors.splice(i,1); }
-      for (let i = plants.length-1; i>=0; i--) { plants[i].update(); plants[i].draw(silenceFade); if (plants[i].dead) plants.splice(i,1); }
-      for (let i = butterflies.length-1; i>=0; i--) { butterflies[i].update(); butterflies[i].draw(silenceFade); if (butterflies[i].dead) butterflies.splice(i,1); }
+    function stopAllAudio() {
+      if (sound) { try { sound.stop(); } catch(e){} }
+      if (mic) { try { mic.stop(); } catch(e){} }
     }
 
-    function spawnPlantSmart(energy, fixedX=null){ const tries = 12; for (let k=0;k<tries;k++){ const x = (fixedX==null) ? random(width) : fixedX + random(-6,6); const bi = xToBin(x); if (countPlantsInBin(bi) < 3){ const type = (random() < 0.55 ? 'sprout' : 'flower'); plants.push(new Plant(Math.min(Math.max(x,0),width), type, energy)); break; } } }
-    function easeOutCubic(t){ return 1 - pow(1 - t, 3); } function easeOutBack(t){ const c1 = 1.70158, c3 = c1 + 1; return 1 + c3*pow(t-1,3) + c1*pow(t-1,2); }
+    // Band energy helper with optional volume normalization
+    function normEnergy(name, e) {
+      ema[name] = lerp(ema[name], e, emaAlpha);
+      // Ratio -> scale around 128
+      const r = e / (ema[name] + 1e-3);
+      return constrain(128 * r, 0, 255);
+    }
 
-    class Plant { constructor(x, type, energy) { this.x = x; this.type = type; this.life = 0; this.dead = false; const baseH = (type==='sprout') ? random(10, 18) : random(22, 44); const sizeK = map(energy, 70, 255, 0.9, 1.4, true); this.hTarget = baseH * sizeK; this.growFrames = Math.floor(random(48, 90)); this.bloomStart = this.growFrames * 0.55; this.age = 0; this.maxAge = this.growFrames + Math.floor(random(90, 160)); this.leafW = random(10, 16) * sizeK * (type==='sprout'?1.2:1.0); this.leafH = random(5.5, 8.0) * sizeK * (type==='sprout'?1.2:1.0); this.flowerR = random(7, 12) * sizeK; this.swing = random(0.012, 0.022); this.seed = random(1000); } update(){ this.age++; if (this.age > this.maxAge) this.dead = true; } draw(silence){ const y0 = height * 0.85; const t = Math.max(0, Math.min(1, this.age / this.growFrames)); const grow = easeOutCubic(t); const sway = Math.sin(frameCount * this.swing + this.seed) * 5 * (1 - silence); const stemH = this.hTarget * grow * (1 - silence*0.95); const topX = this.x + sway; const topY = y0 - stemH; stroke(255); strokeWeight(1.8); line(this.x, y0, topX, topY); noStroke(); if (this.type === 'flower') { const bt = t < 0.001 ? 0 : Math.max(0, Math.min(1, (this.age - this.bloomStart)/ (this.growFrames - this.bloomStart + 1))); const open = easeOutBack(bt); const r = this.flowerR * (0.4 + 0.6 * open) * (1 - silence*0.9); push(); translate(topX, topY); fill(255); for (let i=0;i<6;i++){ const a = i * PI/3 + this.seed*0.2; const pr = r*0.95; ellipse(Math.cos(a)*pr, Math.sin(a)*pr, pr*0.95, pr*0.95); } fill(255); circle(0,0, r*0.9); pop(); } else { const lr = easeOutBack(t); const lw = this.leafW * lr * (1 - silence*0.9); const lh = this.leafH * lr * (1 - silence*0.9); push(); translate(topX, topY); fill(255); ellipse(-lw*0.7, 0, lw, lh); ellipse(+lw*0.7, 0, lw, lh); pop(); } } }
-    class Butterfly { constructor(x, y, scaleBase=0.45) { this.x = x; this.y = y; this.life = 0; this.maxLife = 300 + random(120); this.dead = false; this.vx = random(-0.5, 0.5); this.vy = random(-0.25, 0.25); this.phase = random(TWO_PI); this.s = scaleBase * random(0.9, 1.1); } update(){ this.life++; this.phase += 0.05; this.x += this.vx + Math.sin(this.phase*1.6)*0.6; this.y += this.vy + Math.cos(this.phase*1.1)*0.45; this.x = Math.max(-20, Math.min(width+20, this.x)); this.y = Math.max(height*0.25, Math.min(height*0.85-12, this.y)); if (this.life>this.maxLife) this.dead=true; } draw(silence){ const a = (1 - silence) * 220 * (1 - this.life/this.maxLife); push(); translate(this.x, this.y); scale(this.s); noStroke(); fill(255,a); const flap = 0.9 + Math.sin(frameCount*0.45) * 0.30 * (1 - silence); push(); scale(flap,1); ellipse(-9,-2,16,12); ellipse(-8,5,14,10); ellipse(9,-2,16,12); ellipse(8,5,14,10); pop(); rectMode(CENTER); rect(0,0,2.2,12,2); stroke(255,a); strokeWeight(1); noFill(); bezier(-1,-6,-5,-10,-7,-12,-8,-13); bezier(1,-6,5,-10,7,-12,8,-13); pop(); } }
-    class DustStar { constructor(x,y,noiseIndex){ this.x=x; this.y=y; this.life=0; this.maxLife=random(80,180); this.size=map(noiseIndex,0.6,1.0,0.9,2.8,true)*random(0.8,1.4); this.alpha=random(90,180); this.dead=false; } update(){ this.life++; if (this.life>this.maxLife) this.dead=true; } draw(silence){ const a=this.alpha*(1 - silence); fill(255,a); noStroke(); circle(this.x,this.y,this.size); } }
-    class Meteor { constructor(x, y, vx, vy, life){ this.x=x; this.y=y; this.vx=vx; this.vy=vy; this.life=0; this.maxLife=life; this.dead=false; this.trail=[]; } update(){ this.life++; this.trail.push({x:this.x,y:this.y}); if (this.trail.length>20) this.trail.shift(); this.x+=this.vx; this.y+=this.vy; if (this.life>this.maxLife) this.dead=true; } draw(silence){ const alpha=230*(1 - silence); noFill(); for(let i=0;i<this.trail.length-1;i++){ const p1=this.trail[i],p2=this.trail[i+1]; const a=alpha*(i/this.trail.length); stroke(255,a); strokeWeight(map(i,0,this.trail.length-1,1,3.2)); line(p1.x,p1.y,p2.x,p2.y);} noStroke(); fill(255,alpha); ellipse(this.x,this.y,4.5,4.5); } }
-
+    // ======= Recording helpers =======
     async function startRecording() {
-      if (mediaRecorder) return; const canvasStream = document.querySelector('canvas').captureStream(60); const ac = getAudioContext();
-      if (!destNode) { destNode = ac.createMediaStreamDestination(); try { p5.soundOut.output.connect(destNode); } catch(e){}
-        if (mic && mic.stream) { try { micToDest = ac.createMediaStreamSource(mic.stream); micToDest.connect(destNode); } catch(e){} } }
-      const combined = new MediaStream([ ...canvasStream.getVideoTracks(), ...destNode.stream.getAudioTracks() ]);
-      mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/webm;codecs=vp9,opus' }); recordedChunks = [];
-      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-      mediaRecorder.onstop = e => { const blob = new Blob(recordedChunks, { type: 'video/webm' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'visualizer_v6_2.webm'; a.click(); setTimeout(()=>URL.revokeObjectURL(url), 1000); mediaRecorder = null; };
-      mediaRecorder.start();
+      if (recording) return;
+      const canvasEl = document.querySelector('canvas');
+      const fps = 60;
+      const videoStream = canvasEl.captureStream(fps);
+
+      // Try to capture audio
+      const tracks = [...videoStream.getTracks()];
+      const ctx = getAudioContext();
+      let dest;
+      try {
+        dest = ctx.createMediaStreamDestination();
+        // Try to connect p5 master output (works in many browsers/p5 versions)
+        if (window.p5 && window.p5.prototype && window.p5.prototype.soundFormats) {
+          if (window.p5.soundOut && (window.p5.soundOut.output || window.p5.soundOut.gain)) {
+            (window.p5.soundOut.output || window.p5.soundOut.gain).connect(dest);
+          }
+        }
+      } catch(e) { /* ignore */ }
+
+      // Add mic track if usingMic
+      if (usingMic && mic && mic.stream) {
+        const micTracks = mic.stream.getAudioTracks();
+        micTracks.forEach(t => tracks.push(t));
+      } else if (dest && dest.stream) {
+        const aTracks = dest.stream.getAudioTracks();
+        aTracks.forEach(t => tracks.push(t));
+      }
+
+      combinedStream = new MediaStream(tracks);
+      const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus'
+                  : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') ? 'video/webm;codecs=vp8,opus'
+                  : 'video/webm';
+      try {
+        recorder = new MediaRecorder(combinedStream, { mimeType: mime, videoBitsPerSecond: 6_000_000 });
+      } catch(e) {
+        recorder = new MediaRecorder(combinedStream);
+      }
+      recordedChunks = [];
+      recorder.ondataavailable = (e)=>{ if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+      recorder.onstop = ()=>{
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.getElementById('download');
+        a.href = url; a.textContent = '録画をダウンロード（webm）';
+        a.download = 'visualizer_' + new Date().toISOString().replaceAll(':','-') + '.webm';
+      };
+      recorder.start();
+      recording = true;
+      document.getElementById('recStart').disabled = true;
+      document.getElementById('recStop').disabled  = false;
+      document.getElementById('download').textContent = '';
     }
-    async function stopRecording() { if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); }
+
+    function stopRecording() {
+      if (!recording) return;
+      recorder.stop();
+      recording = false;
+      document.getElementById('recStart').disabled = false;
+      document.getElementById('recStop').disabled  = true;
+    }
+
+    // ======= Draw Loop =======
+    function draw() {
+      background(9, 10, 16, 255);
+
+      const spectrum = fft.analyze();
+      const level = amp.getLevel();
+      peak.update(fft);
+
+      const active = level > 0.01 || (sound && sound.isPlaying());
+      if (active) lastActiveMillis = millis();
+
+      const silentFor = millis() - lastActiveMillis;
+      if (silentFor > 1200) { silenceFade = min(1, silenceFade + 0.02); }
+      else { silenceFade = max(0, silenceFade - 0.03); }
+
+      // Baseline
+      stroke(255); strokeWeight(3); line(0, baselineY, width, baselineY); noStroke();
+
+      // Bands
+      let e_bass   = fft.getEnergy(40, 180);
+      let e_grass  = fft.getEnergy(180, 500);
+      let e_flower = fft.getEnergy(500, 1000);
+      let e_bfly   = fft.getEnergy(1000, 3000);
+      let e_bird   = fft.getEnergy(3000, 6000);
+      let e_high   = fft.getEnergy(6000, 12000);
+
+      if (!levelModeEl.checked) {
+        e_bass   = normEnergy('bass', e_bass);
+        e_grass  = normEnergy('grass', e_grass);
+        e_flower = normEnergy('flower', e_flower);
+        e_bfly   = normEnergy('bfly', e_bfly);
+        e_bird   = normEnergy('bird', e_bird);
+        e_high   = normEnergy('high', e_high);
+      }
+
+      // Spectral flatness proxy via entropy
+      let sum = 0; for (let i=0;i<spectrum.length;i++) sum += spectrum[i] + 1e-6;
+      let entropy = 0; for (let i=0;i<spectrum.length;i++){ const p=(spectrum[i]+1e-6)/sum; entropy += -p*Math.log(p); }
+      entropy = entropy / Math.log(spectrum.length);
+      const noiseIndex = entropy;
+
+      // ===== Spawns =====
+      const birdScale = parseFloat(birdScaleEl.value || '1.0');
+
+      // Grass (1/10 rate)
+      if (!Number.isNaN(e_grass) && e_grass > 120 && plants.length < MAX_COUNTS.plants) {
+        const base = floor(map(e_grass, 120, 255, 1, 5, true));
+        const count = max(0, floor(base * 0.1)); // 1/10
+        for (let i=0;i<count;i++) { plants.push(new Plant(pickXFromBand(180, 500, spectrum), 'grass')); }
+      }
+
+      // Flowers
+      if (!Number.isNaN(e_flower) && e_flower > 120 && plants.length < MAX_COUNTS.plants) {
+        const count = floor(map(e_flower, 120, 255, 1, 4, true));
+        for (let i=0;i<count;i++) { plants.push(new Plant(pickXFromBand(500, 1000, spectrum), 'flower')); }
+      }
+
+      // Butterflies
+      if (!Number.isNaN(e_bfly) && e_bfly > 120 && butterflies.length < MAX_COUNTS.butterflies && random()<0.7) {
+        const n = floor(map(e_bfly, 120, 255, 1, 3, true));
+        for (let i=0;i<n;i++) butterflies.push(new Butterfly(pickXFromBand(1000, 3000, spectrum)));
+      }
+
+      // Birds (more frequent + scale)
+      if (!Number.isNaN(e_bird) && e_bird > 130 && millis() - lastSpawn.bird > COOLDOWN.bird && birds.length < MAX_COUNTS.birds) {
+        const n = max(1, floor(map(e_bird, 130, 255, 1, 2, true) * birdScale));
+        for (let i=0;i<n;i++) birds.push(new Bird(pickXFromBand(3000, 6000, spectrum)));
+        lastSpawn.bird = millis();
+      }
+
+      // Caterpillar (rare)
+      if (e_grass > 160 && millis() - lastSpawn.caterpillar > COOLDOWN.caterpillar && caterpillars.length < MAX_COUNTS.caterpillars) {
+        caterpillars.push(new Caterpillar(random(width*0.1, width*0.9)));
+        lastSpawn.caterpillar = millis();
+      }
+
+      // Big Drops (low band)
+      if (e_bass > 140 && millis() - lastSpawn.drop > COOLDOWN.drop && drops.length < MAX_COUNTS.drops) {
+        const c = floor(map(e_bass, 140, 255, 1, 3, true));
+        for (let i=0;i<c;i++) drops.push(new Drop(pickXFromBand(40, 180, spectrum), -20 - random(0, 100)));
+        lastSpawn.drop = millis();
+      }
+
+      // Big Stars (high band)
+      if (e_high > 150 && millis() - lastSpawn.bigStar > COOLDOWN.bigStar && bigStars.length < MAX_COUNTS.bigStars) {
+        const c = floor(map(e_high, 150, 255, 1, 3, true));
+        for (let i=0;i<c;i++) bigStars.push(new BigStar(pickXFromBand(6000, 12000, spectrum), -20 - random(0, 140)));
+        lastSpawn.bigStar = millis();
+      }
+
+      // Small peak stars (short sounds)
+      if (peak.isDetected && millis() - lastSpawn.star > COOLDOWN.star && stars.length < MAX_COUNTS.stars) {
+        const c = constrain(map(level, 0, 0.2, 1, 4), 1, 6);
+        for (let i=0;i<c;i++) stars.push(new SmallStar(random(width), -20 - random(0, 100)));
+        lastSpawn.star = millis();
+      }
+
+      // Noise dust (with adjustable sensitivity)
+      const dustCount = floor(map(noiseIndex, noiseStart, 1.0, 0, 16, true));
+      for (let i=0;i<dustCount && dust.length<MAX_COUNTS.dust; i++) {
+        if (random()<0.6) dust.push(new DustStar(random(width), random(height*0.05, height*0.65), noiseIndex));
+      }
+
+      // ===== Update & Draw =====
+      for (let i = dust.length-1; i>=0; i--) { dust[i].update(); dust[i].draw(silenceFade); if (dust[i].dead) dust.splice(i,1); }
+      for (let i = drops.length-1; i>=0; i--) { drops[i].update(level); drops[i].draw(silenceFade); if (drops[i].dead) drops.splice(i,1); }
+      for (let i = bigStars.length-1; i>=0; i--) { bigStars[i].update(level); bigStars[i].draw(silenceFade); if (bigStars[i].dead) bigStars.splice(i,1); }
+      for (let i = stars.length-1; i>=0; i--) { stars[i].update(level); stars[i].draw(silenceFade); if (stars[i].dead) stars.splice(i,1); }
+
+      for (let i = plants.length-1; i>=0; i--) { plants[i].update(e_grass, e_flower, level); plants[i].draw(silenceFade); if (plants[i].dead) plants.splice(i,1); }
+      for (let i = butterflies.length-1; i>=0; i--) { butterflies[i].update(silenceFade); butterflies[i].draw(silenceFade); if (butterflies[i].dead) butterflies.splice(i,1); }
+      for (let i = birds.length-1; i>=0; i--) { birds[i].update(e_bird, silenceFade); birds[i].draw(silenceFade); if (birds[i].dead) birds.splice(i,1); }
+      for (let i = caterpillars.length-1; i>=0; i--) { caterpillars[i].update(); caterpillars[i].draw(silenceFade); if (caterpillars[i].dead) caterpillars.splice(i,1); }
+    }
+
+    // ======= Position mapping helpers =======
+    function freqToXLog(freqHz) {
+      const nyq = sampleRate() / 2;
+      const f = constrain(freqHz, 20, nyq);
+      const logMin = Math.log(20);
+      const logMax = Math.log(nyq);
+      const t = (Math.log(f) - logMin) / (logMax - logMin);
+      return t * width;
+    }
+
+    function pickXFromBand(rangeStartHz, rangeEndHz, spectrum) {
+      const nyq = sampleRate() / 2;
+      const startBin = floor(map(rangeStartHz, 0, nyq, 0, spectrum.length));
+      const endBin   = max(startBin+1, ceil(map(rangeEndHz, 0, nyq, 0, spectrum.length)));
+      let acc = 0;
+      for (let i=startBin;i<endBin;i++) acc += spectrum[i] + 1e-6;
+      if (acc <= 0) return random(width);
+      let r = random(acc), cum = 0, idx = startBin;
+      for (; idx < endBin; idx++) { cum += spectrum[idx] + 1e-6; if (cum >= r) break; }
+      const x = map(idx, startBin, endBin-1, 0, width, true);
+      return constrain(x + random(-10,10), 0, width);
+    }
+
+    // ======= Entities =======
+    class Plant {
+      constructor(x, type) {
+        this.x = x + random(-6, 6);
+        this.type = type;
+        this.life = 0;
+        this.maxLife = random(90, 160);
+        this.h = random(14, 26);
+        this.swing = random(0.015, 0.03);
+        this.seed = random(1000);
+        this.dead = false;
+      }
+      update(e_grass, e_flower, level) {
+        this.life++;
+        const energy = (this.type === 'grass') ? e_grass : e_flower;
+        const grow = map(energy, 80, 255, 0.4, 2.2, true);
+        this.h += (grow - 0.5) * 0.4;
+        if (this.life > this.maxLife) this.dead = true;
+      }
+      draw(silence) {
+        const y0 = baselineY;
+        const sway = sin(frameCount * this.swing + this.seed) * 6 * (1 - silence);
+        const topX = this.x + sway;
+        const topY = y0 - this.h * (1 - silence*0.95);
+        stroke(255); strokeWeight(1.6); line(this.x, y0, topX, topY); noStroke();
+        if (this.type === 'flower') {
+          const r = 4 + (1 - silence) * 3;
+          push(); translate(topX, topY); fill(255);
+          for (let i=0;i<6;i++){ const a = i * PI/3 + this.seed*0.2; ellipse(cos(a)*r, sin(a)*r, r*0.9, r*0.9); }
+          fill(255); circle(0,0, r*0.9); pop();
+        } else {
+          fill(255); circle(topX, topY, 2.2 + (1 - silence) * 1.2);
+        }
+      }
+    }
+
+    class Bird {
+      constructor(targetX) {
+        this.x = random(width);
+        this.y = random(-80, -10);
+        this.tx = targetX;
+        this.ty = baselineY - 16;
+        this.state = 'fly';
+        this.timer = 0;
+        this.dead = false;
+      }
+      update(e_bird, silence) {
+        this.timer++;
+        if (this.state === 'fly') {
+          this.x += (this.tx - this.x) * 0.06;
+          this.y += (this.ty - this.y) * 0.07;
+          if (dist(this.x, this.y, this.tx, this.ty) < 2.5) { this.state = 'perch'; this.timer = 0; }
+        } else {
+          this.y = this.ty + sin(frameCount * 0.05) * 0.6 * (1 - silence);
+          if (this.timer > 800 || silence > 0.8) { this.state = 'fly'; this.ty = -50; }
+        }
+        if (this.y < -60 && this.state === 'fly' && this.timer > 200) this.dead = true;
+      }
+      draw(silence) {
+        push(); translate(this.x, this.y); const s = 1.0; fill(255); noStroke();
+        ellipse(0, 0, 14*s, 10*s); ellipse(-6*s, -3*s, 7*s, 6*s); triangle( -9*s, -3*s, -13*s, -2*s, -9*s, -1*s );
+        push(); translate(3*s, 0); rotate(sin(frameCount*0.25) * 0.35 * (this.state==='fly' ? 1 : 0.2) * (1 - silence)); ellipse(0, 0, 10*s, 5*s); pop();
+        pop();
+      }
+    }
+
+    class Butterfly {
+      constructor(x) {
+        this.x = x; this.y = baselineY - random(60, 140);
+        this.vx = random(-1.2, 1.2); this.vy = random(-0.6, 0.6);
+        this.phase = random(TWO_PI); this.life = 0; this.maxLife = random(300, 600);
+        this.dead = false;
+      }
+      update(silence) {
+        this.life++; this.phase += 0.2;
+        this.x += this.vx + sin(this.phase) * 0.6;
+        this.y += this.vy + cos(this.phase*1.3) * 0.4;
+        this.x = constrain(this.x, 0, width);
+        this.y = constrain(this.y, height*0.15, baselineY - 8);
+        if (this.life > this.maxLife || silence > 0.95) this.dead = true;
+      }
+      draw(silence) {
+        push(); translate(this.x, this.y); noStroke(); fill(255, 220*(1-silence));
+        const flap = 0.9 + sin(frameCount*0.4) * 0.4 * (1 - silence);
+        ellipse(-5, 0, 8*flap, 12*flap); ellipse(-8, 2, 6*flap, 10*flap);
+        ellipse( 5, 0, 8*flap, 12*flap); ellipse( 8, 2, 6*flap, 10*flap);
+        rectMode(CENTER); rect(0, 0, 2, 8, 1);
+        pop();
+      }
+    }
+
+    class Caterpillar {
+      constructor(x) {
+        this.x = x; this.y = baselineY - 2;
+        this.dir = random()<0.5 ? -1 : 1;
+        this.speed = random(0.4, 0.8) * this.dir;
+        this.phase = random(TWO_PI); this.life = 0; this.maxLife = random(600, 1200);
+        this.dead = false;
+      }
+      update() {
+        this.life++; this.phase += 0.15;
+        this.x += this.speed + sin(this.phase)*0.3;
+        if (this.x < -40 || this.x > width+40 || this.life > this.maxLife) this.dead = true;
+      }
+      draw(silence) {
+        push(); translate(this.x, this.y); noStroke();
+        const segs = 7;
+        for (let i=0;i<segs;i++) { const off = sin(this.phase + i*0.6) * 2.2; circle(i*4, off, 4); }
+        pop();
+      }
+    }
+
+    class SmallStar {
+      constructor(x, y) { this.x=x; this.y=y; this.vy = random(2.0, 5.0); this.size = random(2, 4.5); this.life=0; this.maxLife=random(120, 220); this.dead=false; }
+      update(level) { this.life++; this.y += this.vy + level * 20; if (this.life > this.maxLife || this.y > height + 20) this.dead = true; }
+      draw(silence) { push(); translate(this.x, this.y); const a = map(this.life, 0, this.maxLife, 255, 0) * (1 - silence); fill(255, a); noStroke();
+        rectMode(CENTER); rect(0, 0, this.size, this.size*0.3, 1.5); rect(0, 0, this.size*0.3, this.size, 1.5); pop(); }
+    }
+
+    class BigStar {
+      constructor(x, y) { this.x=x; this.y=y; this.vy = random(1.6, 3.2); this.size = random(8, 14); this.life=0; this.maxLife=random(160, 300); this.dead=false; this.spin = random(-0.03, 0.03); }
+      update(level) { this.life++; this.y += this.vy + level * 14; if (this.life > this.maxLife || this.y > height + 30) this.dead = true; }
+      draw(silence) {
+        push(); translate(this.x, this.y); rotate(this.spin*frameCount); const a = 220*(1-silence); fill(255, a); noStroke();
+        starShape(0,0,this.size*0.4,this.size,5); pop();
+      }
+    }
+
+    class Drop {
+      constructor(x, y) { this.x=x; this.y=y; this.vy = random(2.2, 4.2); this.size = random(8, 12); this.life=0; this.dead=false; this.splashed=false; }
+      update(level) {
+        this.life++; this.y += this.vy + level*10;
+        if (!this.splashed && this.y >= baselineY-1) { this.splashed=true; this.y = baselineY-1; this.life = 0; }
+        if (this.splashed && this.life > 30) this.dead = true;
+      }
+      draw(silence) {
+        const a = 230*(1-silence);
+        if (!this.splashed) {
+          push(); translate(this.x, this.y); noStroke(); fill(255, a);
+          ellipse(0, 0, this.size*0.7, this.size); pop();
+        } else {
+          push(); translate(this.x, baselineY-1); stroke(255, a); noFill();
+          arc(0, 0, 12, 6, PI, PI*2); arc(0, 0, 18, 8, PI, PI*2); pop();
+        }
+      }
+    }
+
+    class DustStar {
+      constructor(x, y, noiseIndex) {
+        this.x = x; this.y = y;
+        this.life = 0; this.maxLife = random(80, 180);
+        this.size = map(noiseIndex, 0.6, 1.0, 0.8, 2.6, true) * random(0.7, 1.3);
+        this.alpha = random(80, 170);
+        this.dead = false;
+      }
+      update() { this.life++; if (this.life > this.maxLife) this.dead = true; }
+      draw(silence) { const a = this.alpha * (1 - silence); fill(255, a); noStroke(); circle(this.x, this.y, this.size); }
+    }
+
+    function starShape(x, y, r1, r2, n) {
+      beginShape();
+      for (let i = 0; i < n; i++) {
+        const a = TWO_PI * i / n - PI/2;
+        const x1 = x + cos(a) * r2;
+        const y1 = y + sin(a) * r2;
+        vertex(x1, y1);
+        const a2 = a + PI / n;
+        const x2 = x + cos(a2) * r1;
+        const y2 = y + sin(a2) * r1;
+        vertex(x2, y2);
+      }
+      endShape(CLOSE);
+    }
   </script>
 </body>
 </html>
