@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-  <title>Audio Visualizer v6.2.3 – 超敏感(スマホ)・Safariドロワー修正</title>
+  <title>Audio Visualizer v6.2.4 – ファイル読み込み安定化 & Safari修正</title>
   <!-- p5.js & sound addon -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/addons/p5.sound.min.js"></script>
@@ -239,6 +239,34 @@
       const $ = (id)=>document.getElementById(id); const status = $('status');
       $('file').addEventListener('change', async (e) => {
         await userStartAudio();
+        const f = e.target.files[0];
+        const status = document.getElementById('status');
+        if (!f) return;
+        try { getAudioContext().resume(); } catch(_){ }
+        // 既存の再生を停止・切断
+        if (sound) { try{ sound.stop(); }catch(_){ } try{ sound.disconnect && sound.disconnect(); }catch(_){ } sound = null; }
+        fileLoaded = false; usingMic = false; // マイクではない
+        // ロード成功時の処理
+        const onSuccess = (sf) => {
+          sound = sf; fileLoaded = true;
+          try { amp.setInput(sound); fft.setInput(sound); } catch(_){ }
+          if (status) status.textContent = '読み込み完了';
+          if (pendingPlay) { try{ sound.play(); }catch(_){ } pendingPlay = false; }
+          if (sound && sound.onended) sound.onended(()=>{ lastActiveMillis = millis() - 5000; });
+        };
+        // ロード失敗時は URL フォールバック
+        const onError = (err) => {
+          console.warn('loadSound(file) failed, fallback to blob URL', err);
+          const url = URL.createObjectURL(f);
+          loadSound(url, (sf2)=>{ URL.revokeObjectURL(url); onSuccess(sf2); }, (err2)=>{ URL.revokeObjectURL(url); if (status) status.textContent='読み込み失敗'; console.error(err2); });
+        };
+        try {
+          if (status) status.textContent = '読み込み中…';
+          loadSound(f, onSuccess, onError);
+        } catch (e1) {
+          onError(e1);
+        }
+      });
         const f = e.target.files[0]; if (!f) return;
         try {
           if (sound) { try{ sound.stop(); }catch(_){} sound = null; }
