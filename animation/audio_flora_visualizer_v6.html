@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-  <title>Audio Visualizer v6 – 双葉/花メイン・感度トグル・量調整・モバイルUI</title>
+  <title>Audio Visualizer v6.1 – 双葉/花メイン・感度/量調整・モバイルUI・マイク録音修正</title>
   <!-- p5.js & sound addon -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/addons/p5.sound.min.js"></script>
@@ -29,21 +29,27 @@
       padding: 8px 10px; border-radius: 10px; z-index:2; max-width: 42ch;
     }
     #fab { /* mobile gear button */
-      position: fixed; right: 14px; bottom: 14px; z-index: 4;
+      position: fixed; right: 14px; bottom: 14px; z-index: 5;
       border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.15);
       color:#fff; padding: 12px; border-radius: 999px; cursor: pointer; font-size: 16px; display:none;
     }
+    #backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 4; display:none;
+    }
     #panel { /* mobile drawer */
-      position: fixed; left: 0; right: 0; bottom: -70vh; height: 60vh; z-index: 4;
+      position: fixed; left: 0; right: 0; bottom: -70vh; height: 60vh; z-index: 6;
       background: rgba(20,20,28,0.95); backdrop-filter: blur(10px);
       border-top: 1px solid rgba(255,255,255,0.14);
-      transition: bottom 0.25s ease; padding: 10px 12px; border-radius: 14px 14px 0 0;
+      transition: bottom 0.25s ease; padding: 8px 12px 12px; border-radius: 14px 14px 0 0;
+      touch-action: none;
     }
     #panel.open { bottom: 0; }
-    #panel .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-    #panel h4 { margin: 6px 0 6px; font-size: 13px; opacity: .9; }
-    #panel select, #panel button, #panel label { font-size: 14px; padding: 10px; border-radius: 12px; }
+    #panel .handle { display:flex; justify-content:center; padding: 6px 0 10px; }
+    #panel .handle .bar { width: 44px; height: 4px; border-radius: 999px; background: rgba(255,255,255,0.35); }
     #panel .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+    #panel .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    #panel h4 { margin: 4px 0 6px; font-size: 13px; opacity: .9; }
+    #panel select, #panel button, #panel label { font-size: 14px; padding: 10px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08); color:#eee; }
     .pill { display:inline-flex; gap:6px; align-items:center; padding:6px 10px; border:1px solid rgba(255,255,255,0.18); border-radius: 999px; background: rgba(255,255,255,0.08); font-size:12px; cursor:pointer; }
     .active { outline: 1px solid rgba(255,255,255,0.45); }
     a { color: #9ec5ff; }
@@ -105,15 +111,18 @@
     <span id="status" style="margin-left:8px; font-size:12px; opacity:.85;">準備中</span>
   </div>
 
-  <!-- Mobile: floating button + drawer -->
+  <!-- Mobile: backdrop + drawer -->
+  <div id="backdrop"></div>
   <button id="fab">⚙️</button>
-  <div id="panel">
+  <div id="panel" aria-modal="true" role="dialog">
+    <div class="handle" id="handle"><div class="bar"></div></div>
     <div class="row" style="justify-content:space-between">
       <div class="pill" id="pickFileM"><span>📄</span><span>音声</span></div>
       <div class="pill" id="micM"><span>🎤</span><span>マイク</span></div>
       <div class="pill" id="playM"><span>▶</span><span>再生</span></div>
       <div class="pill" id="pauseM"><span>⏸</span><span>停止</span></div>
       <div class="pill" id="recM"><span>⏺</span><span>録画</span></div>
+      <div class="pill" id="closeM"><span>⬇</span><span>閉じる</span></div>
     </div>
     <h4>音量感度</h4>
     <div class="row">
@@ -161,9 +170,8 @@
   <script>
     // ======= Audio + Analysis =======
     let fft, amp, mic, sound, usingMic = false, fileLoaded = false;
-    let lastActiveMillis = 0;   // 音が鳴っている最終時刻
-    let silenceFade = 0;        // 無音時のフェード 0..1
-    // dynamic sensitivity
+    let lastActiveMillis = 0;
+    let silenceFade = 0;
     const sense = { mode: 'normal', ampScale:1.0, gate:0.008, peak:0.12, donDelta:0.08 };
     function applySense(mode){
       sense.mode = mode;
@@ -174,34 +182,23 @@
     }
 
     // ======= Visual State =======
-    const plants = [];      // sprout/flower
-    const butterflies = []; // 🦋
-    const dustStars = [];   // background twinkles
-    const meteors = [];     // ☄️
-    let baselineY;
-    let prevLevel = 0;
-    let donCooldown = 0; // frames to suppress meteors after DON
-
-    // 地点ごとの「同時最大3本」制約用のビン（横方向）
-    let NUM_BINS = 36; let BIN_W = 0;
-
+    const plants = [], butterflies = [], dustStars = [], meteors = [];
+    let baselineY, prevLevel = 0, donCooldown = 0;
+    let NUM_BINS = 36, BIN_W = 0;
     const E = { level:0, plantBand:0, bflyBand:0, bass:0, ultra:0, entropy:0 };
-    let plantPeak; // peak detector for plant band
+    let plantPeak;
 
-    // Multipliers (量)
+    // Amount multipliers
     const amount = { plant:1, bfly:0.33, meteor:0.6, dust:1 };
 
     // Wake Lock
     let wakeLock = null;
     async function toggleWake(btn){
-      try{
-        if (!wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); btn.textContent='ON'; }
-        else { await wakeLock.release(); wakeLock=null; btn.textContent='OFF'; }
-      }catch(e){ console.warn('wake lock:', e); btn.textContent='NG'; }
+      try{ if (!wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); btn.textContent='ON'; } else { await wakeLock.release(); wakeLock=null; btn.textContent='OFF'; } }catch(e){ console.warn('wake lock:', e); btn.textContent='NG'; }
     }
 
-    // ======= Recording =======
-    let mediaRecorder = null, recordedChunks = [], destNode = null;
+    // Recording nodes (mix mic manually so it records)
+    let mediaRecorder = null, recordedChunks = [], destNode = null, micToDest = null;
 
     function setup() {
       createCanvas(window.innerWidth, window.innerHeight);
@@ -218,136 +215,180 @@
       applySense('normal');
       calcBins();
       bindUI();
+      bindDrawer();
     }
 
-    function calcBins(){ NUM_BINS = max(24, floor(width / 48)); BIN_W = width / NUM_BINS; }
-    function xToBin(x){ return constrain(floor(x / BIN_W), 0, NUM_BINS-1); }
-    function countPlantsInBin(bi){
-      let c = 0; for (let p of plants){ if (!p.dead && xToBin(p.x)===bi) c++; } return c;
-    }
+    function calcBins(){ NUM_BINS = Math.max(24, Math.floor(width / 48)); BIN_W = width / NUM_BINS; }
+    function xToBin(x){ return Math.max(0, Math.min(NUM_BINS-1, Math.floor(x / BIN_W))); }
+    function countPlantsInBin(bi){ let c=0; for (let p of plants){ if (!p.dead && xToBin(p.x)===bi) c++; } return c; }
 
     function bindUI() {
       const $ = (id)=>document.getElementById(id);
       const status = $('status');
-
-      // desktop controls
       $('file').addEventListener('change', async (e) => {
-        await userStartAudio(); stopAllAudio();
+        await userStartAudio();
         const f = e.target.files[0]; if (!f) return;
         const url = URL.createObjectURL(f);
+        if (sound && sound.isPlaying()) sound.stop();
         sound = loadSound(url, () => {
           fileLoaded = true; usingMic = false;
           amp.setInput(sound); fft.setInput(sound);
-          status.textContent = 'ファイル読み込み完了'; sound.onended(()=>{ lastActiveMillis = millis()-5000; });
+          status.textContent = 'ファイル読み込み完了';
+          sound.onended(() => { lastActiveMillis = millis() - 5000; });
         }, (err)=>{ status.textContent='読み込み失敗'; console.error(err); });
       });
+
       $('mic').addEventListener('click', async () => {
-        await userStartAudio(); stopAllAudio();
-        mic = new p5.AudioIn(); mic.start(()=>{
-          usingMic=true; fileLoaded=false; amp.setInput(mic); fft.setInput(mic);
-          status.textContent='マイク入力中';
-        }, (err)=>{ status.textContent='マイク許可エラー'; console.error(err); });
+        await userStartAudio();
+        if (sound && sound.isPlaying()) { try{ sound.stop(); }catch(e){} }
+        if (!mic) mic = new p5.AudioIn();
+        mic.start(() => {
+          usingMic = true; fileLoaded = false;
+          amp.setInput(mic); fft.setInput(mic);
+          status.textContent = 'マイク入力中（録画にミックス）';
+          const ac = getAudioContext();
+          if (destNode && mic && mic.stream) {
+            try {
+              if (micToDest) micToDest.disconnect();
+              micToDest = ac.createMediaStreamSource(mic.stream);
+              micToDest.connect(destNode);
+            } catch (e) { console.warn('mic->dest connect fail', e); }
+          }
+        }, (err)=>{ status.textContent = 'マイク許可エラー'; console.error(err); });
       });
-      $('play').addEventListener('click', async ()=>{ await userStartAudio(); if (sound&&fileLoaded){ if(!sound.isPlaying()) sound.play(); status.textContent='再生中'; } });
-      $('pause').addEventListener('click', ()=>{ if (sound&&sound.isPlaying()){ sound.pause(); status.textContent='一時停止'; } });
-      $('record').addEventListener('click', async ()=>{ if(!mediaRecorder){ await startRecording(); $('record').textContent='録画停止'; $('record').classList.add('active'); } else { await stopRecording(); $('record').textContent='録画開始'; $('record').classList.remove('active'); } });
+
+      $('play').addEventListener('click', async () => {
+        await userStartAudio();
+        if (sound && fileLoaded) { if (!sound.isPlaying()) sound.play(); status.textContent='再生中'; }
+      });
+      $('pause').addEventListener('click', () => {
+        if (sound && sound.isPlaying()) { sound.pause(); status.textContent='一時停止'; }
+      });
+
+      $('record').addEventListener('click', async () => {
+        if (!mediaRecorder) {
+          await startRecording(); $('record').textContent='録画停止'; $('record').classList.add('active');
+        } else {
+          await stopRecording(); $('record').textContent='録画開始'; $('record').classList.remove('active');
+        }
+      });
+
       $('sense').addEventListener('change', (e)=>applySense(e.target.value));
       $('plantAmt').addEventListener('change', (e)=>amount.plant=parseFloat(e.target.value));
       $('bflyAmt').addEventListener('change', (e)=>amount.bfly=parseFloat(e.target.value));
       $('meteorAmt').addEventListener('change', (e)=>amount.meteor=parseFloat(e.target.value));
       $('dustAmt').addEventListener('change', (e)=>amount.dust=parseFloat(e.target.value));
       $('wake').addEventListener('click', ()=>toggleWake($('wake')));
+    }
 
-      // mobile drawer + fab
-      const panel = $('panel'); const fab = $('fab');
-      fab.addEventListener('click', ()=>panel.classList.toggle('open'));
+    function bindDrawer(){
+      const $ = (id)=>document.getElementById(id);
+      const panel=$('panel'), fab=$('fab'), backdrop=$('backdrop'), handle=$('handle');
+      const openPanel = (open)=>{
+        panel.classList.toggle('open', open);
+        backdrop.style.display = open ? 'block' : 'none';
+        document.body.style.overflow = open ? 'hidden' : '';
+      };
+      fab.addEventListener('click', ()=>openPanel(true));
+      $('closeM').addEventListener('click', ()=>openPanel(false));
+      backdrop.addEventListener('click', ()=>openPanel(false));
+      // swipe-down to close
+      let startY=null, lastY=null;
+      const onStart=(e)=>{ startY = (e.touches?e.touches[0].clientY:e.clientY); lastY=startY; };
+      const onMove=(e)=>{
+        if (startY==null) return;
+        const y = (e.touches?e.touches[0].clientY:e.clientY);
+        lastY = y;
+        const dy = y - startY;
+        if (dy>0){ panel.style.bottom = Math.min(dy, window.innerHeight*0.6) * -1 + 'px'; }
+      };
+      const onEnd=()=>{
+        if (startY==null) return;
+        const dy = lastY - startY;
+        panel.style.bottom = '';
+        if (dy > 60) openPanel(false);
+        startY=null; lastY=null;
+      };
+      panel.addEventListener('touchstart', onStart, {passive:true});
+      panel.addEventListener('touchmove', onMove, {passive:true});
+      panel.addEventListener('touchend', onEnd);
+      handle.addEventListener('mousedown', onStart);
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onEnd);
+      window.addEventListener('keydown', (e)=>{ if (e.key==='Escape' && panel.classList.contains('open')) openPanel(false); });
+
+      // mobile control bindings (proxy to desktop buttons)
+      const mapSel = (m, d)=>{ $(m).addEventListener('change', e=>{ $(d).value = e.target.value; $(d).dispatchEvent(new Event('change')); }); };
       $('pickFileM').addEventListener('click', ()=>$('file').click());
       $('micM').addEventListener('click', ()=>$('mic').click());
       $('playM').addEventListener('click', ()=>$('play').click());
       $('pauseM').addEventListener('click', ()=>$('pause').click());
       $('recM').addEventListener('click', ()=>$('record').click());
-      $('senseM').addEventListener('change', (e)=>{ $('sense').value=e.target.value; $('sense').dispatchEvent(new Event('change')); });
-      $('plantAmtM').addEventListener('change', (e)=>{ $('plantAmt').value=e.target.value; $('plantAmt').dispatchEvent(new Event('change')); });
-      $('bflyAmtM').addEventListener('change', (e)=>{ $('bflyAmt').value=e.target.value; $('bflyAmt').dispatchEvent(new Event('change')); });
-      $('meteorAmtM').addEventListener('change', (e)=>{ $('meteorAmt').value=e.target.value; $('meteorAmt').dispatchEvent(new Event('change')); });
-      $('dustAmtM').addEventListener('change', (e)=>{ $('dustAmt').value=e.target.value; $('dustAmt').dispatchEvent(new Event('change')); });
+      mapSel('senseM', 'sense'); mapSel('plantAmtM','plantAmt'); mapSel('bflyAmtM','bflyAmt'); mapSel('meteorAmtM','meteorAmt'); mapSel('dustAmtM','dustAmt');
       $('wakeM').addEventListener('click', ()=>toggleWake($('wakeM')));
     }
 
     function windowResized() { resizeCanvas(window.innerWidth, window.innerHeight); baselineY = height * 0.85; calcBins(); }
-    function stopAllAudio() { if (sound){ try{sound.stop();}catch(e){} } if (mic){ try{mic.stop();}catch(e){} } }
+    function stopAllAudio() { if (sound){ try{sound.stop();}catch(e){} } }
 
     function draw() {
       background(11, 11, 15, 255);
 
-      // 解析
       const spectrum = fft.analyze();
-      let level = amp.getLevel() * sense.ampScale; level = constrain(level, 0, 1);
-      E.level = lerp(E.level, level, 0.2); // smoothed level
+      let level = amp.getLevel() * sense.ampScale; level = Math.min(Math.max(level,0),1);
+      E.level = lerp(E.level, level, 0.2);
       plantPeak.update(fft);
 
-      // アクティブ判定 + 無音フェード
       const active = level > sense.gate || (sound && sound.isPlaying());
       if (active) lastActiveMillis = millis();
       const silentFor = millis() - lastActiveMillis;
-      if (silentFor > 900) { silenceFade = min(1, silenceFade + 0.03); } else { silenceFade = max(0, silenceFade - 0.05); }
+      if (silentFor > 900) silenceFade = Math.min(1, silenceFade + 0.03); else silenceFade = Math.max(0, silenceFade - 0.05);
 
-      // 白い基準線
       stroke(255); strokeWeight(3); line(0, baselineY, width, baselineY); noStroke();
 
-      // ====== エネルギ ======
       const plantBand = fft.getEnergy(200, 2000);
       const bflyBand  = fft.getEnergy(2000, 8000);
       const bass   = fft.getEnergy(20, 120);
       const ultra  = fft.getEnergy(8000, 16000);
 
-      // エントロピー（ノイズ度）
       let sum = 0; for (let i=0;i<spectrum.length;i++) sum += spectrum[i] + 1e-6;
       let entropy = 0; for (let i=0;i<spectrum.length;i++){ const p = (spectrum[i]+1e-6)/sum; entropy += -p*Math.log(p); }
       entropy = entropy / Math.log(spectrum.length);
 
-      // Smooth
       E.plantBand = lerp(E.plantBand, plantBand, 0.25);
       E.bflyBand  = lerp(E.bflyBand,  bflyBand,  0.25);
       E.bass      = lerp(E.bass,      bass,      0.25);
       E.ultra     = lerp(E.ultra,     ultra,     0.25);
       E.entropy   = lerp(E.entropy,   entropy,   0.25);
 
-      // ====== 背景ノイズ → キラキラ星 ======
-      const dustCount = floor(map(E.entropy, 0.6, 1.0, 0, 10*amount.dust, true));
+      const dustCount = Math.floor(map(E.entropy, 0.6, 1.0, 0, 10*amount.dust, true));
       for (let i=0;i<dustCount;i++) dustStars.push(new DustStar(random(width), random(height*0.05, height*0.65), E.entropy));
 
-      // ====== DON! 検出：Levelの立ち上がりで判定 ======
-      const delta = max(0, level - prevLevel);
-      prevLevel = level;
+      const delta = Math.max(0, level - prevLevel); prevLevel = level;
       if (delta > sense.donDelta && level > sense.gate*2) {
-        // 花優先：バーストを生成し、短時間は流星を抑制
-        donCooldown = 22; // ~0.36s @60fps
-        const clusters = floor(random(1, 3 + amount.plant)); // 1〜(2+)
+        donCooldown = 22;
+        const clusters = Math.floor(random(1, 3 + amount.plant));
         for (let c=0;c<clusters;c++){
           const center = random(width);
-          const n = floor(random(3, 6) * amount.plant);
+          const n = Math.floor(random(3, 6) * amount.plant);
           for (let i=0;i<n;i++){
-            const x = constrain(center + random(-24, 24), 0, width);
+            const x = Math.min(Math.max(center + random(-24, 24), 0), width);
             spawnPlantSmart(E.plantBand, x);
           }
         }
       }
       if (donCooldown>0) donCooldown--;
 
-      // ====== 通常の双葉・花 ======
       if (E.plantBand > 70 && random() < 0.35 * amount.plant) spawnPlantSmart(E.plantBand);
       if (plantPeak.isDetected) {
-        const burst = floor(random(3, 7) * amount.plant);
+        const burst = Math.floor(random(3, 7) * amount.plant);
         for (let i=0;i<burst;i++) spawnPlantSmart(E.plantBand);
       }
 
-      // ====== 🦋（小さく・少なめ・2000Hz+） ======
       if ((E.bflyBand > 130 && random() < 0.012 * amount.bfly) || random() < 0.003 * amount.bfly) {
-        butterflies.push(new Butterfly(random(width), random(height*0.35, height*0.75), 0.45)); // even smaller
+        butterflies.push(new Butterfly(random(width), random(height*0.35, height*0.75), 0.45));
       }
 
-      // ====== 流星（柔軟トリガ、ただしDON後は抑制） ======
       const meteorTrig = (E.level > 0.2) || (E.bass > 130) || (E.ultra > 130);
       if (donCooldown===0 && meteorTrig && meteors.length < 6 && random() < 0.22 * amount.meteor) {
         const dir = random([-1, 1]);
@@ -355,20 +396,15 @@
         const startY = random(height*0.05, height*0.5);
         const vx = dir * random(7.5, 10.5);
         const vy = random(6.0, 9.0);
-        meteors.push(new Meteor(startX, startY, vx, vy, floor(random(28, 50))));
+        meteors.push(new Meteor(startX, startY, vx, vy, Math.floor(random(28, 50))));
       }
 
-      // ====== 更新・描画 ======
       for (let i = dustStars.length-1; i>=0; i--) { dustStars[i].update(); dustStars[i].draw(silenceFade); if (dustStars[i].dead) dustStars.splice(i,1); }
       for (let i = meteors.length-1; i>=0; i--) { meteors[i].update(); meteors[i].draw(silenceFade); if (meteors[i].dead) meteors.splice(i,1); }
       for (let i = plants.length-1; i>=0; i--) { plants[i].update(); plants[i].draw(silenceFade); if (plants[i].dead) plants.splice(i,1); }
       for (let i = butterflies.length-1; i>=0; i--) { butterflies[i].update(); butterflies[i].draw(silenceFade); if (butterflies[i].dead) butterflies.splice(i,1); }
-
-      // 無音フェーズ
-      if (silenceFade > 0.95) { /* 白線のみ */ }
     }
 
-    // ====== Plant spawn helpers ======
     function spawnPlantSmart(energy, fixedX=null){
       const tries = 12;
       for (let k=0;k<tries;k++){
@@ -376,26 +412,24 @@
         const bi = xToBin(x);
         if (countPlantsInBin(bi) < 3){
           const type = (random() < 0.55 ? 'sprout' : 'flower');
-          plants.push(new Plant(constrain(x,0,width), type, energy));
+          plants.push(new Plant(Math.min(Math.max(x,0),width), type, energy));
           break;
         }
       }
     }
 
-    // ======= Easing =======
     function easeOutCubic(t){ return 1 - pow(1 - t, 3); }
     function easeOutBack(t){ const c1 = 1.70158, c3 = c1 + 1; return 1 + c3*pow(t-1,3) + c1*pow(t-1,2); }
 
-    // ======= Classes =======
     class Plant {
       constructor(x, type, energy) {
         this.x = x; this.type = type; this.life = 0; this.dead = false;
         const baseH = (type==='sprout') ? random(10, 18) : random(22, 44);
         const sizeK = map(energy, 70, 255, 0.9, 1.4, true);
         this.hTarget = baseH * sizeK;
-        this.growFrames = floor(random(48, 90));
+        this.growFrames = Math.floor(random(48, 90));
         this.bloomStart = this.growFrames * 0.55;
-        this.age = 0; this.maxAge = this.growFrames + floor(random(90, 160));
+        this.age = 0; this.maxAge = this.growFrames + Math.floor(random(90, 160));
         this.leafW = random(10, 16) * sizeK * (type==='sprout'?1.2:1.0);
         this.leafH = random(5.5, 8.0) * sizeK * (type==='sprout'?1.2:1.0);
         this.flowerR = random(7, 12) * sizeK;
@@ -403,19 +437,19 @@
       }
       update(){ this.age++; if (this.age > this.maxAge) this.dead = true; }
       draw(silence){
-        const y0 = baselineY;
-        const t = constrain(this.age / this.growFrames, 0, 1);
+        const y0 = height * 0.85;
+        const t = Math.max(0, Math.min(1, this.age / this.growFrames));
         const grow = easeOutCubic(t);
-        const sway = sin(frameCount * this.swing + this.seed) * 5 * (1 - silence);
+        const sway = Math.sin(frameCount * this.swing + this.seed) * 5 * (1 - silence);
         const stemH = this.hTarget * grow * (1 - silence*0.95);
         const topX = this.x + sway; const topY = y0 - stemH;
         stroke(255); strokeWeight(1.8); line(this.x, y0, topX, topY); noStroke();
         if (this.type === 'flower') {
-          const bt = t < 0.001 ? 0 : constrain((this.age - this.bloomStart)/ (this.growFrames - this.bloomStart + 1), 0, 1);
+          const bt = t < 0.001 ? 0 : Math.max(0, Math.min(1, (this.age - this.bloomStart)/ (this.growFrames - this.bloomStart + 1)));
           const open = easeOutBack(bt);
           const r = this.flowerR * (0.4 + 0.6 * open) * (1 - silence*0.9);
           push(); translate(topX, topY); fill(255);
-          for (let i=0;i<6;i++){ const a = i * PI/3 + this.seed*0.2; const pr = r*0.95; ellipse(cos(a)*pr, sin(a)*pr, pr*0.95, pr*0.95); }
+          for (let i=0;i<6;i++){ const a = i * PI/3 + this.seed*0.2; const pr = r*0.95; ellipse(Math.cos(a)*pr, Math.sin(a)*pr, pr*0.95, pr*0.95); }
           fill(255); circle(0,0, r*0.9); pop();
         } else {
           const lr = easeOutBack(t);
@@ -433,11 +467,11 @@
         this.vx = random(-0.5, 0.5); this.vy = random(-0.25, 0.25); this.phase = random(TWO_PI);
         this.s = scaleBase * random(0.9, 1.1);
       }
-      update(){ this.life++; this.phase += 0.05; this.x += this.vx + sin(this.phase*1.6)*0.6; this.y += this.vy + cos(this.phase*1.1)*0.45; this.x = constrain(this.x, -20, width+20); this.y = constrain(this.y, height*0.25, baselineY-12); if (this.life>this.maxLife) this.dead=true; }
+      update(){ this.life++; this.phase += 0.05; this.x += this.vx + Math.sin(this.phase*1.6)*0.6; this.y += this.vy + Math.cos(this.phase*1.1)*0.45; this.x = Math.max(-20, Math.min(width+20, this.x)); this.y = Math.max(height*0.25, Math.min(height*0.85-12, this.y)); if (this.life>this.maxLife) this.dead=true; }
       draw(silence){
         const a = (1 - silence) * 220 * (1 - this.life/this.maxLife);
         push(); translate(this.x, this.y); scale(this.s); noStroke(); fill(255,a);
-        const flap = 0.9 + sin(frameCount*0.45) * 0.30 * (1 - silence);
+        const flap = 0.9 + Math.sin(frameCount*0.45) * 0.30 * (1 - silence);
         push(); scale(flap,1); ellipse(-9,-2,16,12); ellipse(-8,5,14,10); ellipse(9,-2,16,12); ellipse(8,5,14,10); pop();
         rectMode(CENTER); rect(0,0,2.2,12,2);
         stroke(255,a); strokeWeight(1); noFill(); bezier(-1,-6,-5,-10,-7,-12,-8,-13); bezier(1,-6,5,-10,7,-12,8,-13);
@@ -455,17 +489,30 @@
       draw(silence){ const alpha=230*(1 - silence); noFill(); for(let i=0;i<this.trail.length-1;i++){ const p1=this.trail[i],p2=this.trail[i+1]; const a=alpha*(i/this.trail.length); stroke(255,a); strokeWeight(map(i,0,this.trail.length-1,1,3.2)); line(p1.x,p1.y,p2.x,p2.y);} noStroke(); fill(255,alpha); ellipse(this.x,this.y,4.5,4.5); }
     }
 
-    // ======= Recording (Canvas + Audio) =======
     async function startRecording() {
       if (mediaRecorder) return;
       const canvasStream = document.querySelector('canvas').captureStream(60);
       const ac = getAudioContext();
-      if (!destNode) { destNode = ac.createMediaStreamDestination(); try { p5.soundOut.output.connect(destNode); } catch(e){ console.warn('audio connect failed', e); } }
+      if (!destNode) {
+        destNode = ac.createMediaStreamDestination();
+        try { p5.soundOut.output.connect(destNode); } catch(e){ console.warn('output->dest connect failed', e); }
+        if (mic && mic.stream) {
+          try { micToDest = ac.createMediaStreamSource(mic.stream); micToDest.connect(destNode); } catch(e){ console.warn('mic->dest connect fail', e); }
+        }
+      }
       const combined = new MediaStream([ ...canvasStream.getVideoTracks(), ...destNode.stream.getAudioTracks() ]);
       mediaRecorder = new MediaRecorder(combined, { mimeType: 'video/webm;codecs=vp9,opus' });
       recordedChunks = [];
       mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-      mediaRecorder.onstop = e => { const blob = new Blob(recordedChunks, { type: 'video/webm' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'visualizer_v6.webm'; a.click(); setTimeout(()=>URL.revokeObjectURL(url), 1000); mediaRecorder = null; };
+      mediaRecorder.onstop = e => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'visualizer_v6_1.webm';
+        a.click();
+        setTimeout(()=>URL.revokeObjectURL(url), 1000);
+        mediaRecorder = null;
+      };
       mediaRecorder.start();
     }
     async function stopRecording() { if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); }
