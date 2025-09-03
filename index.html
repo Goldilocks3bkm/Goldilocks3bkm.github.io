@@ -2,51 +2,181 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Filler World Telescope</title>
   <style>
-    body {
-      margin: 0;
-      font-family: 'Helvetica', 'Arial', sans-serif;
-      background-color: #f9f9f9;
-      color: #333;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      height: 100vh;
+    :root{
+      --fg:#2e2e2e;
+      --bg:#fafafa;
+      --accent:#1f6feb;
+      --card:#ffffff;
+      --ring:rgba(31,111,235,.35);
+      --shadow: 0 10px 30px rgba(0,0,0,.06);
+      --radius: 18px;
+    }
+    * { box-sizing: border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Noto Sans JP", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      color:var(--fg);
+      background:linear-gradient(180deg, #f9fbff 0%, var(--bg) 100%);
+      display:grid;
+      place-items:center;
+      padding:4vh 4vw;
     }
 
-    h1 {
-      margin-top: 15vh;
-      font-size: 2.5em;
-      letter-spacing: 1px;
+    main{
+      width:min(1100px, 100%);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:28px;
     }
 
-    .lang-links {
-      margin-top: 2em;
-      display: flex;
-      gap: 2em;
-      font-size: 1.2em;
+    /* タイトル：サンセリフ & 可変サイズ */
+    h1{
+      margin:0;
+      font-weight:700;
+      letter-spacing:.02em;
+      line-height:1.1;
+      text-align:center;
+      font-size:clamp(2.2rem, 4.5vw + 0.5rem, 5rem);
     }
 
-    .lang-links a {
-      text-decoration: none;
-      color: #007acc;
-      border-bottom: 1px solid transparent;
-      transition: 0.2s;
+    .subtitle{
+      opacity:.75;
+      font-size:clamp(.95rem, 1.1vw + .6rem, 1.2rem);
+      text-align:center;
     }
 
-    .lang-links a:hover {
-      border-color: #007acc;
+    /* リンクカード配置 */
+    .lang-grid{
+      margin-top:min(4vh, 36px);
+      width:100%;
+      display:grid;
+      grid-template-columns: repeat(2, minmax(220px, 1fr));
+      gap:22px;
+    }
+    @media (max-width:640px){
+      .lang-grid{ grid-template-columns: 1fr; }
+    }
+
+    .lang-card{
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      border-radius:var(--radius);
+      background:var(--card);
+      box-shadow:var(--shadow);
+      padding:16px;
+      text-decoration:none;
+      color:inherit;
+      border:1px solid rgba(0,0,0,.06);
+      transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+    }
+    .lang-card:focus-visible{
+      outline:3px solid var(--ring);
+      outline-offset:3px;
+    }
+    .lang-card:hover{
+      transform: translateY(-2px);
+      box-shadow: 0 16px 40px rgba(0,0,0,.08);
+      border-color: rgba(31,111,235,.18);
+    }
+
+    /* ラベル：上部・中央寄せ */
+    .label{
+      display:flex;
+      align-items:center;
+      justify-content:center;   /* 中央揃え */
+      gap:10px;
+      padding:2px 4px 6px;
+      text-align:center;
+    }
+    .label span{
+      font-weight:650;
+      font-size:clamp(1rem, 1.2vw + .4rem, 1.25rem);
+      letter-spacing:.01em;
+    }
+    .arrow{
+      font-size:1.1em;
+      color:var(--accent);
+      opacity:.9;
+      transform: translateX(0);
+      transition: transform .18s ease;
+    }
+    .lang-card:hover .arrow{
+      transform: translateX(4px);
+    }
+
+    /* 画像スロット：画像サイズに追従（見切れ防止） */
+    .thumb{
+      width:100%;
+      border-radius: calc(var(--radius) - 6px);
+      background: linear-gradient(135deg, #eef4ff, #f7fbff);
+      border:1px dashed rgba(31,111,235,.25);
+      padding:8px;                 /* 余白 */
+      display:block;               /* 高さは中身（画像）に依存 */
+      text-align:center;           /* 中央寄せ */
+    }
+    .thumb img{
+      display:inline-block;
+      max-width:100%;
+      height:auto;                 /* アスペクト比維持 */
+      object-fit:contain;          /* 念のため（枠より小さく表示） */
+    }
+    .thumb .placeholder{
+      font-size:.9rem;
+      opacity:.55;
+      display:block;
+      margin:10px 0;
+    }
+
+    footer{
+      margin-top:20px;
+      opacity:.6;
+      font-size:.9rem;
+      text-align:center;
     }
   </style>
 </head>
 <body>
-  <h1>Filler World Telescope</h1>
-  <div class="lang-links">
-    <a href="fwtjp\indexjp.md">日本語</a>
-    <a href="/en/">English</a>
-  </div>
+  <main>
+    <h1>Filler World Telescope</h1>
+    <p class="subtitle">なにもないけど、なにかがある — Filler Worldの小さな玄関</p>
+
+    <section class="lang-grid" aria-label="Language entries">
+      <!-- 日本語 -->
+      <a class="lang-card" href="/fwtjp\indexjp.md" aria-label="日本語サイトへ">
+        <!-- ラベルを上部に配置 & 中央揃え -->
+        <div class="label">
+          <span>日本語</span>
+          <span class="arrow">→</span>
+        </div>
+        <div class="thumb">
+          <!-- 後で /img/jp.png のように差し込んでね -->
+          <img src="/img/rogo1.png" alt="FWT Japanese" />
+          <div class="placeholder"></div>
+        </div>
+      </a>
+
+      <!-- English -->
+      <a class="lang-card" href="/en/" aria-label="Go to English site">
+        <div class="label">
+          <span>English</span>
+          <span class="arrow">→</span>
+        </div>
+        <div class="thumb">
+          <img src="/img/rogo2.png" alt="FWT English" />
+          <div class="placeholder"></div>
+        </div>
+      </a>
+    </section>
+
+    <footer>
+      © Filler World Telescope
+    </footer>
+  </main>
 </body>
 </html>
