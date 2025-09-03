@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-  <title>Audio Visualizer v6.3 – Safari安定版（HTMLAudio + WebAudio解析、超敏感あり）</title>
+  <title>Audio Visualizer v6.3.1 – モバイルで説明欄を自動非表示（横画面も）</title>
   <!-- p5.js only for canvas/draw utils -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
   <style>
@@ -36,7 +36,16 @@
     /* Emergency opener area when FAB fails */
     #edgeOpen { position: fixed; left:0; right:0; bottom:0; height:28px; z-index:640; background: transparent; display:none; }
     @media (max-width: 680px) { #ui{display:none;} #legend{display:none;} #fab{display:block;} #edgeOpen{display:block;} }
-  </style>
+    /* === モバイルで説明欄(#legend)を非表示（横画面も含む）=== */
+  /* スマホ幅 → 非表示 */
+  @media (hover: none) and (pointer: coarse) and (max-width: 820px) {
+    #legend { display: none !important; }
+  }
+  /* 横画面で高さが低い端末 → 非表示 */
+  @media (hover: none) and (pointer: coarse) and (max-height: 520px) {
+    #legend { display: none !important; }
+  }
+</style>
 </head>
 <body>
   <!-- Desktop/Tablet controls -->
