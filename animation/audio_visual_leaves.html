@@ -2,43 +2,49 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>オーディオビジュアライザー - 落ち葉エフェクト（v6d 退避ロジック最終修正）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>オーディオビジュアライザー - 落ち葉エフェクト（v6e オールフィックス）</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
       background: #ffffff;
       overflow: hidden;
-      height: 100vh;
+      touch-action: manipulation; /* スマホでの操作性向上 */
     }
-    #canvas { display: block; background: #ffffff; }
+    #canvas { display: block; background: #ffffff; width: 100vw; height: 100vh; }
     #controls {
-      position: fixed; top: 20px; left: 20px; z-index: 1000;
-      background: rgba(255,255,255,0.96); padding: 16px; border-radius: 14px;
+      position: fixed; top: 16px; left: 16px; z-index: 1000;
+      background: rgba(255,255,255,0.96); padding: 14px; border-radius: 14px;
       box-shadow: 0 8px 24px rgba(0,0,0,0.12); border: 1px solid rgba(0,0,0,0.06);
-      transition: transform 0.25s ease, opacity 0.25s ease; max-width: 320px;
+      transition: transform 0.25s ease, opacity 0.25s ease; max-width: min(92vw, 360px);
+      backdrop-filter: saturate(150%) blur(2px);
     }
     #controls.hidden { transform: translateX(-110%); opacity: 0; pointer-events: none; }
     #toggleBtn {
-      position: fixed; top: 20px; left: 20px; width: 48px; height: 48px; z-index: 1001;
+      position: fixed; top: 16px; left: 16px; width: 48px; height: 48px; z-index: 1001;
       display: grid; place-items: center; font-size: 20px; border: none; border-radius: 9999px;
       background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.15); cursor: pointer;
+      touch-action: manipulation;
     }
     .control-group { margin-bottom: 12px; }
     label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #111; }
-    input[type="range"] { width: 100%; }
+    input[type="range"], input[type="text"], textarea { width: 100%; font-size: 14px; }
     button {
       background: #667eea; color: #fff; border: none; padding: 8px 12px;
-      border-radius: 8px; cursor: pointer; margin: 2px; font-size: 12px;
+      border-radius: 8px; cursor: pointer; margin: 2px 4px 2px 0; font-size: 13px;
+      touch-action: manipulation;
     }
     button:disabled { background: #c9c9c9; cursor: not-allowed; }
-    #fileInput { width: 100%; font-size: 12px; margin: 8px 0; }
+    #fileInput { width: 100%; font-size: 13px; margin: 8px 0; }
     .status { margin-top: 8px; padding: 8px; border-radius: 6px; background: #f3f4f6; font-size: 12px; color: #111; }
     .recording { background: #ffebee !important; color: #c62828; }
     .value-display { font-weight: 500; color: #555; }
     .band-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-top:6px;}
     .band-grid span{display:block;text-align:center;font-size:12px;padding:4px;border-radius:6px;background:#f7f7f7;border:1px solid #eee}
+    .row { display:flex; align-items:center; gap:8px; flex-wrap: wrap; }
+    .row > * { flex: 1 1 auto; }
   </style>
 </head>
 <body>
@@ -49,14 +55,19 @@
   <div id="controls" role="region" aria-label="設定パネル">
     <h3 style="margin-bottom: 10px; color:#111;">オーディオビジュアライザー</h3>
 
-    <div class="control-group">
+    <div class="control-group row">
       <button id="startMic">🎤 マイク開始</button>
       <button id="stopAudio">⏹️ 停止</button>
+      <button id="startRecording">🔴 録画開始</button>
+      <button id="stopRecording" disabled>⏹️ 録画停止</button>
     </div>
 
     <div class="control-group">
       <input type="file" id="fileInput" accept="audio/*,.mp3,.wav,.ogg,.m4a" />
-      <button id="playFile">🎵 ファイル再生</button>
+      <div class="row">
+        <button id="playFile">🎵 再生/再再生</button>
+        <button id="pauseFile">⏸ 一時停止</button>
+      </div>
     </div>
 
     <div class="control-group">
@@ -89,8 +100,14 @@
     </div>
 
     <div class="control-group">
-      <button id="startRecording">🔴 録画開始</button>
-      <button id="stopRecording" disabled>⏹️ 録画停止</button>
+      <label class="row" style="align-items:center;">
+        <input type="checkbox" id="toggleWords" checked style="width:auto; margin-right:6px;"> ランダム文字を表示
+      </label>
+      <label>カスタム文字列（任意）</label>
+      <input type="text" id="customText" placeholder="例：あのイーハトーヴォのすきとおった風…">
+      <label class="row" style="align-items:center; margin-top:6px;">
+        <input type="checkbox" id="useCustom" style="width:auto; margin-right:6px;"> カスタム文字列を使う（1〜3文字のコマ切れ）
+      </label>
     </div>
 
     <div id="status" class="status">マイクまたはファイルを選択してください</div>
@@ -109,6 +126,7 @@
         this.audioContext = null;
         this.analyser = null;
         this.dataArray = null;
+        this.mixedDest = null;   // ★録音用のミックス出力
         this.isPlaying = false;
 
         this.microphone = null;
@@ -122,6 +140,10 @@
         this.maxLeaves = 60;
         this.fallSpeedMul = 0.7;
         this.windStrength = 1.5;
+
+        this.showWords = true;
+        this.useCustom = false;
+        this.customText = '';
 
         this.leaves = [];
         this.spawnAccumulator = 0;
@@ -153,7 +175,9 @@
         document.getElementById('startMic').addEventListener('click', () => this.startMicrophone());
         document.getElementById('stopAudio').addEventListener('click', () => this.stopAudio());
         document.getElementById('fileInput').addEventListener('change', (e) => this.handleFileSelect(e));
-        document.getElementById('playFile').addEventListener('click', () => this.playFile());
+        document.getElementById('playFile').addEventListener('click', () => this.playFile(true));
+        document.getElementById('pauseFile').addEventListener('click', () => this.pauseFile());
+
         document.getElementById('leafCount').addEventListener('input', (e) => {
           this.maxLeaves = parseInt(e.target.value, 10);
           document.getElementById('leafCountValue').textContent = this.maxLeaves;
@@ -171,6 +195,17 @@
           const el = document.getElementById('b' + i);
           el.addEventListener('input', (e) => { this.bandGains[i] = parseFloat(e.target.value); });
         }
+
+        document.getElementById('toggleWords').addEventListener('change', (e) => {
+          this.showWords = !!e.target.checked;
+        });
+        document.getElementById('useCustom').addEventListener('change', (e) => {
+          this.useCustom = !!e.target.checked;
+        });
+        document.getElementById('customText').addEventListener('input', (e) => {
+          this.customText = e.target.value || '';
+        });
+
         document.getElementById('startRecording').addEventListener('click', () => this.startRecording());
         document.getElementById('stopRecording').addEventListener('click', () => this.stopRecording());
       }
@@ -197,11 +232,22 @@
           this.analyser.smoothingTimeConstant = 0.65;
           this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
         }
+        if (!this.mixedDest) {
+          this.mixedDest = this.audioContext.createMediaStreamDestination();
+        }
+      }
+
+      disconnectAnalyserOutputs() {
+        try { if (this.analyser) this.analyser.disconnect(); } catch {}
       }
 
       disconnectCurrentSources() {
         try { if (this.mediaElementSource) { this.mediaElementSource.disconnect(); this.mediaElementSource = null; } } catch {}
-        try { if (this.microphone) { this.microphone.disconnect(); this.microphone = null; } if (this.mediaStream) { this.mediaStream.getTracks().forEach(t => t.stop()); this.mediaStream = null; } } catch {}
+        try {
+          if (this.microphone) { this.microphone.disconnect(); this.microphone = null; }
+          if (this.mediaStream) { this.mediaStream.getTracks().forEach(t => t.stop()); this.mediaStream = null; }
+        } catch {}
+        this.disconnectAnalyserOutputs();
       }
 
       async startMicrophone() {
@@ -210,9 +256,13 @@
           await this.audioContext.resume();
           if (this.audioElement) { this.audioElement.pause(); }
           this.disconnectCurrentSources();
+
           this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
           this.microphone = this.audioContext.createMediaStreamSource(this.mediaStream);
+          // 入力→解析＆録音（モニターはしない：ハウリング回避）
           this.microphone.connect(this.analyser);
+          this.analyser.connect(this.mixedDest);
+
           this.isPlaying = true;
           this.updateStatus('マイク入力中...');
         } catch (err) { this.updateStatus('マイクアクセスエラー: ' + err.message); console.error(err); }
@@ -221,31 +271,42 @@
       handleFileSelect(e) {
         const file = e.target.files && e.target.files[0];
         if (!file) return;
-        if (this.audioElement) { this.audioElement.pause(); this.audioElement.src = ''; this.audioElement.load(); }
+        if (this.audioElement) { try { this.audioElement.pause(); } catch {} }
         const url = URL.createObjectURL(file);
         this.audioElement = new Audio();
         this.audioElement.src = url;
         this.audioElement.preload = 'auto';
-        this.audioElement.loop = false;
+        this.audioElement.loop = false; // ループしない
+        this.audioElement.crossOrigin = "anonymous"; // 安全側（同一オリジンなら無害）
         this.audioElement.addEventListener('ended', () => { this.isPlaying = false; this.updateStatus('再生終了'); });
         this.audioElement.addEventListener('loadeddata', () => { this.updateStatus('ファイル読み込み完了: ' + (file.name || 'blob')); });
         this.audioElement.addEventListener('error', (e) => { this.updateStatus('ファイル読み込みエラー'); console.error(e); });
       }
 
-      async playFile() {
+      async playFile(resetToStart=false) {
         try {
           if (!this.audioElement) { this.updateStatus('先にファイルを選択してください'); return; }
           this.ensureAudioContext();
           await this.audioContext.resume();
           this.disconnectCurrentSources();
+
+          // メディアをAudioContextに接続（解析＆録音＆モニター）
           this.mediaElementSource = this.audioContext.createMediaElementSource(this.audioElement);
           this.mediaElementSource.connect(this.analyser);
-          this.analyser.connect(this.audioContext.destination);
-          this.audioElement.currentTime = 0;
+          this.analyser.connect(this.audioContext.destination); // 聞こえるように
+          this.analyser.connect(this.mixedDest);               // 録音に混ぜる
+
+          if (resetToStart || this.audioElement.ended) this.audioElement.currentTime = 0;
           await this.audioElement.play();
           this.isPlaying = true;
           this.updateStatus('ファイル再生中...');
         } catch (err) { this.updateStatus('再生エラー: ' + err.message); console.error(err); }
+      }
+
+      pauseFile() {
+        try { if (this.audioElement) this.audioElement.pause(); } catch {}
+        this.isPlaying = false;
+        this.updateStatus('一時停止');
       }
 
       stopAudio() {
@@ -258,18 +319,35 @@
       async startRecording() {
         try {
           const stream = this.canvas.captureStream(30);
-          if (this.mediaStream) {
-            const audioTrack = this.mediaStream.getAudioTracks()[0];
-            if (audioTrack) stream.addTrack(audioTrack);
+
+          // コーデック自動選択
+          const candidates = [
+            'video/webm;codecs=vp8,opus',
+            'video/webm;codecs=vp9,opus',
+            'video/webm',
+            'video/mp4;codecs=h264,aac',
+            'video/mp4'
+          ];
+          let mimeType = '';
+          for (const c of candidates) {
+            if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c)) { mimeType = c; break; }
           }
-          this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus' });
+          const options = mimeType ? { mimeType } : undefined;
+
+          // ★ マイクが無くても録音する：ミックスのオーディオトラックを常に付与
+          this.ensureAudioContext();
+          const mixTrack = this.mixedDest && this.mixedDest.stream.getAudioTracks()[0];
+          if (mixTrack) stream.addTrack(mixTrack);
+
+          this.mediaRecorder = new MediaRecorder(stream, options);
           this.recordedChunks = [];
           this.mediaRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) this.recordedChunks.push(ev.data); };
           this.mediaRecorder.onstop = () => {
-            const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+            const type = mimeType || 'video/webm';
+            const blob = new Blob(this.recordedChunks, { type });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = 'audio_visualizer_' + Date.now() + '.webm';
+            a.href = url; a.download = 'audio_visualizer_' + Date.now() + (type.includes('mp4') ? '.mp4' : '.webm');
             document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
           };
           this.mediaRecorder.start();
@@ -328,15 +406,11 @@
         while (this.spawnAccumulator >= 1) {
           this.spawnAccumulator -= 1;
 
-          // キャップ処理：空中＆接地直後の葉は絶対に消さない
+          // キャップ処理：空中＆接地直後は絶対に消さない
           if (this.leaves.length >= this.maxLeaves) {
             let idx = this.leaves.findIndex(l => l.isDone);
-            if (idx !== -1) {
-              this.leaves.splice(idx, 1);
-            } else {
-              // 退避候補が無ければ新規スポーンしない（安全第一）
-              break;
-            }
+            if (idx !== -1) this.leaves.splice(idx, 1);
+            else break;
           }
 
           const total = bandEs.reduce((a,b)=>a+b,0) + 1e-6;
@@ -351,17 +425,28 @@
           const speed = Math.max(30, (60 + 140 * energy) * this.fallSpeedMul);
           const swing = 8 + 22 * energy;
 
-          const wordPool = Math.random() < 0.33 ? this.hiraList : (Math.random() < 0.5 ? this.kataList : this.abcList);
-          const word = this.randomWordStringFrom(wordPool);
+          const word = this.generateWord();
           const font = this.wordFonts[Math.floor(Math.random()*this.wordFonts.length)];
 
-          this.leaves.push(new Leaf(this.logicalW, this.logicalH, { color, size, speed, swing, word, font }));
+          this.leaves.push(new Leaf(this.logicalW, this.logicalH, { color, size, speed, swing, word, font, showWords: this.showWords }));
         }
       }
 
-      randomWordStringFrom(list) {
-        const len = Math.floor(Math.random() * 4) + 1;
-        let s = ""; for (let i = 0; i < len; i++) s += list[Math.floor(Math.random() * list.length)];
+      generateWord() {
+        // カスタム文字列：1〜3文字の連続コマ切れ
+        if (this.useCustom && this.customText && this.customText.trim().length > 0) {
+          const pool = this.customText.replace(/\s+/g, '');
+          if (pool.length > 0) {
+            const maxChunk = Math.min(3, pool.length);
+            const L = 1 + Math.floor(Math.random() * maxChunk);
+            const start = Math.floor(Math.random() * Math.max(1, pool.length - L + 1));
+            return pool.slice(start, start + L);
+          }
+        }
+        // 通常：ひら/カタ/英から適当に1〜4文字
+        const wordPool = Math.random() < 0.33 ? this.hiraList : (Math.random() < 0.5 ? this.kataList : this.abcList);
+        const len = 1 + Math.floor(Math.random() * 4);
+        let s = ""; for (let i = 0; i < len; i++) s += wordPool[Math.floor(Math.random() * wordPool.length)];
         return s;
       }
 
@@ -376,7 +461,16 @@
       }
 
       draw(dt) {
-        this.ctx.clearRect(0, 0, this.logicalW, this.logicalH);
+        // 録画用に実画素も白く塗る
+        this.ctx.save();
+        this.ctx.setTransform(1,0,0,1,0,0);
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.restore();
+
+        // 以降、論理座標
+        this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
         const bandEs = this.computeBandEnergies();
         this.spawnLeaves(dt, bandEs);
@@ -400,6 +494,7 @@
         this.swingBase = opts.swing || 18;
         this.word = opts.word || "";
         this.font = opts.font || "serif";
+        this.showWords = opts.showWords !== false; // 既定は表示
 
         this.x = Math.random() * this.w;
         this.y = - (10 + Math.random() * 40);
@@ -409,7 +504,7 @@
         this.leafAlpha = 255;
         this.wordAlpha = 0;
         this.wordY = this.y;
-        this.wordState = 0;
+        this.wordState = 0; // 0:未,1:フェードイン,2:ホールド→フェードアウト,3:無効
         this.wordTimer = 0;
 
         this.isDone = false;
@@ -419,9 +514,12 @@
         const groundY = this.h - Math.max(16, this.size * 0.9);
         this.y = groundY;
         this.reachedGround = true;
-        if (this.wordState === 0) this.wordState = 1;
-        // 一瞬でも必ず描かれるように微小値を入れる
-        if (this.wordAlpha <= 0) this.wordAlpha = 0.01;
+        if (this.showWords) {
+          if (this.wordState === 0) this.wordState = 1;
+          if (this.wordAlpha <= 0) this.wordAlpha = 0.01; // 同フレームで確実に見える
+        } else {
+          this.wordState = 3; // 無効
+        }
       }
 
       update(dt, w, h, windStrength) {
@@ -443,6 +541,9 @@
         } else {
           if (this.leafAlpha > 0) {
             this.leafAlpha = Math.max(0, this.leafAlpha - 160 * dt);
+          } else if (this.wordState === 3) {
+            // 文字無効時：葉フェード後に終了
+            this.isDone = true;
           }
         }
 
@@ -491,7 +592,7 @@
           ctx.restore();
         }
 
-        if (this.wordState >= 1 && this.wordAlpha > 0) {
+        if (this.showWords && this.wordState >= 1 && this.wordAlpha > 0) {
           ctx.save();
           ctx.fillStyle = `rgba(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)}, ${this.wordAlpha / 255})`;
           ctx.font = `${Math.max(14, this.size * 1.3)}px ${this.font}`;
