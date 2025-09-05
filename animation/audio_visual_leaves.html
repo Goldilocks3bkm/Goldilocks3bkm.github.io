@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>オーディオビジュアライザー - 落ち葉エフェクト（v6d 退避ロジック最終修正）</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
+      background: #ffffff;
+      overflow: hidden;
+      height: 100vh;
+    }
+    #canvas { display: block; background: #ffffff; }
+    #controls {
+      position: fixed; top: 20px; left: 20px; z-index: 1000;
+      background: rgba(255,255,255,0.96); padding: 16px; border-radius: 14px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.12); border: 1px solid rgba(0,0,0,0.06);
+      transition: transform 0.25s ease, opacity 0.25s ease; max-width: 320px;
+    }
+    #controls.hidden { transform: translateX(-110%); opacity: 0; pointer-events: none; }
+    #toggleBtn {
+      position: fixed; top: 20px; left: 20px; width: 48px; height: 48px; z-index: 1001;
+      display: grid; place-items: center; font-size: 20px; border: none; border-radius: 9999px;
+      background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.15); cursor: pointer;
+    }
+    .control-group { margin-bottom: 12px; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; font-size: 14px; color: #111; }
+    input[type="range"] { width: 100%; }
+    button {
+      background: #667eea; color: #fff; border: none; padding: 8px 12px;
+      border-radius: 8px; cursor: pointer; margin: 2px; font-size: 12px;
+    }
+    button:disabled { background: #c9c9c9; cursor: not-allowed; }
+    #fileInput { width: 100%; font-size: 12px; margin: 8px 0; }
+    .status { margin-top: 8px; padding: 8px; border-radius: 6px; background: #f3f4f6; font-size: 12px; color: #111; }
+    .recording { background: #ffebee !important; color: #c62828; }
+    .value-display { font-weight: 500; color: #555; }
+    .band-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-top:6px;}
+    .band-grid span{display:block;text-align:center;font-size:12px;padding:4px;border-radius:6px;background:#f7f7f7;border:1px solid #eee}
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <button id="toggleBtn" aria-label="設定の表示/非表示">⚙️</button>
+
+  <div id="controls" role="region" aria-label="設定パネル">
+    <h3 style="margin-bottom: 10px; color:#111;">オーディオビジュアライザー</h3>
+
+    <div class="control-group">
+      <button id="startMic">🎤 マイク開始</button>
+      <button id="stopAudio">⏹️ 停止</button>
+    </div>
+
+    <div class="control-group">
+      <input type="file" id="fileInput" accept="audio/*,.mp3,.wav,.ogg,.m4a" />
+      <button id="playFile">🎵 ファイル再生</button>
+    </div>
+
+    <div class="control-group">
+      <label>同時落葉上限: <span id="leafCountValue" class="value-display">60</span></label>
+      <input type="range" id="leafCount" min="10" max="200" value="60" />
+    </div>
+
+    <div class="control-group">
+      <label>落下速度: <span id="speedValue" class="value-display">遅い</span></label>
+      <input type="range" id="fallSpeed" min="0.4" max="2.0" step="0.1" value="0.7" />
+      <small style="color:#555;">遅い（0.4）〜 速い（2.0）</small>
+    </div>
+
+    <div class="control-group">
+      <label>風の強さ: <span id="windValue" class="value-display">1.5</span></label>
+      <input type="range" id="windStrength" min="0.1" max="4.0" step="0.1" value="1.5" />
+    </div>
+
+    <div class="control-group">
+      <label>周波数ごとの感度（Do〜Si）</label>
+      <div class="band-grid">
+        <span>Do<input type="range" id="b0" min="0.5" max="3" step="0.1" value="1.0"></span>
+        <span>Re<input type="range" id="b1" min="0.5" max="3" step="0.1" value="1.1"></span>
+        <span>Mi<input type="range" id="b2" min="0.5" max="3" step="0.1" value="1.2"></span>
+        <span>Fa<input type="range" id="b3" min="0.5" max="3" step="0.1" value="1.3"></span>
+        <span>So<input type="range" id="b4" min="0.5" max="3" step="0.1" value="1.4"></span>
+        <span>La<input type="range" id="b5" min="0.5" max="3" step="0.1" value="1.5"></span>
+        <span>Si<input type="range" id="b6" min="0.5" max="3" step="0.1" value="1.6"></span>
+      </div>
+    </div>
+
+    <div class="control-group">
+      <button id="startRecording">🔴 録画開始</button>
+      <button id="stopRecording" disabled>⏹️ 録画停止</button>
+    </div>
+
+    <div id="status" class="status">マイクまたはファイルを選択してください</div>
+  </div>
+
+  <script>
+    class AudioVisualizer {
+      constructor() {
+        this.canvas = document.getElementById('canvas');
+        this.ctx = this.canvas.getContext('2d');
+
+        this.logicalW = window.innerWidth;
+        this.logicalH = window.innerHeight;
+        this.dpr = Math.min(2, window.devicePixelRatio || 1);
+
+        this.audioContext = null;
+        this.analyser = null;
+        this.dataArray = null;
+        this.isPlaying = false;
+
+        this.microphone = null;
+        this.mediaStream = null;
+        this.audioElement = null;
+        this.mediaElementSource = null;
+
+        this.mediaRecorder = null;
+        this.recordedChunks = [];
+
+        this.maxLeaves = 60;
+        this.fallSpeedMul = 0.7;
+        this.windStrength = 1.5;
+
+        this.leaves = [];
+        this.spawnAccumulator = 0;
+        this.lastTs = performance.now();
+
+        this.bandEdges = [50,100,200,400,800,1600,3200,6400];
+        this.bandGains = [1.0,1.1,1.2,1.3,1.4,1.5,1.6];
+        this.bandEnergies = new Array(7).fill(0);
+
+        this.pastelColors = [
+          [255,182,193],[255,218,185],[255,255,224],
+          [144,238,144],[173,216,230],[221,160,221],[240,230,140]
+        ];
+        this.wordFonts = ["serif","sans-serif","monospace","Georgia","Verdana","Courier New"];
+        this.hiraList = "あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん".split('');
+        this.kataList = "アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン".split('');
+        this.abcList = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".split('');
+
+        this.toggleControls = this.toggleControls.bind(this);
+
+        this.resizeCanvas();
+        this.setupEventListeners();
+        this.animate();
+        window.addEventListener('resize', () => this.resizeCanvas());
+      }
+
+      setupEventListeners() {
+        document.getElementById('toggleBtn').addEventListener('click', this.toggleControls);
+        document.getElementById('startMic').addEventListener('click', () => this.startMicrophone());
+        document.getElementById('stopAudio').addEventListener('click', () => this.stopAudio());
+        document.getElementById('fileInput').addEventListener('change', (e) => this.handleFileSelect(e));
+        document.getElementById('playFile').addEventListener('click', () => this.playFile());
+        document.getElementById('leafCount').addEventListener('input', (e) => {
+          this.maxLeaves = parseInt(e.target.value, 10);
+          document.getElementById('leafCountValue').textContent = this.maxLeaves;
+        });
+        document.getElementById('fallSpeed').addEventListener('input', (e) => {
+          this.fallSpeedMul = parseFloat(e.target.value);
+          const label = this.fallSpeedMul < 0.8 ? "遅い" : (this.fallSpeedMul > 1.4 ? "速い" : "中");
+          document.getElementById('speedValue').textContent = label;
+        });
+        document.getElementById('windStrength').addEventListener('input', (e) => {
+          this.windStrength = parseFloat(e.target.value);
+          document.getElementById('windValue').textContent = this.windStrength.toFixed(1);
+        });
+        for (let i = 0; i < 7; i++) {
+          const el = document.getElementById('b' + i);
+          el.addEventListener('input', (e) => { this.bandGains[i] = parseFloat(e.target.value); });
+        }
+        document.getElementById('startRecording').addEventListener('click', () => this.startRecording());
+        document.getElementById('stopRecording').addEventListener('click', () => this.stopRecording());
+      }
+
+      toggleControls() { document.getElementById('controls').classList.toggle('hidden'); }
+
+      resizeCanvas() {
+        this.logicalW = window.innerWidth;
+        this.logicalH = window.innerHeight;
+        this.dpr = Math.min(2, window.devicePixelRatio || 1);
+
+        this.canvas.width = Math.floor(this.logicalW * this.dpr);
+        this.canvas.height = Math.floor(this.logicalH * this.dpr);
+        this.canvas.style.width = this.logicalW + "px";
+        this.canvas.style.height = this.logicalH + "px";
+        this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      }
+
+      ensureAudioContext() {
+        if (!this.audioContext) this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (!this.analyser) {
+          this.analyser = this.audioContext.createAnalyser();
+          this.analyser.fftSize = 2048;
+          this.analyser.smoothingTimeConstant = 0.65;
+          this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+        }
+      }
+
+      disconnectCurrentSources() {
+        try { if (this.mediaElementSource) { this.mediaElementSource.disconnect(); this.mediaElementSource = null; } } catch {}
+        try { if (this.microphone) { this.microphone.disconnect(); this.microphone = null; } if (this.mediaStream) { this.mediaStream.getTracks().forEach(t => t.stop()); this.mediaStream = null; } } catch {}
+      }
+
+      async startMicrophone() {
+        try {
+          this.ensureAudioContext();
+          await this.audioContext.resume();
+          if (this.audioElement) { this.audioElement.pause(); }
+          this.disconnectCurrentSources();
+          this.mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          this.microphone = this.audioContext.createMediaStreamSource(this.mediaStream);
+          this.microphone.connect(this.analyser);
+          this.isPlaying = true;
+          this.updateStatus('マイク入力中...');
+        } catch (err) { this.updateStatus('マイクアクセスエラー: ' + err.message); console.error(err); }
+      }
+
+      handleFileSelect(e) {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (this.audioElement) { this.audioElement.pause(); this.audioElement.src = ''; this.audioElement.load(); }
+        const url = URL.createObjectURL(file);
+        this.audioElement = new Audio();
+        this.audioElement.src = url;
+        this.audioElement.preload = 'auto';
+        this.audioElement.loop = false;
+        this.audioElement.addEventListener('ended', () => { this.isPlaying = false; this.updateStatus('再生終了'); });
+        this.audioElement.addEventListener('loadeddata', () => { this.updateStatus('ファイル読み込み完了: ' + (file.name || 'blob')); });
+        this.audioElement.addEventListener('error', (e) => { this.updateStatus('ファイル読み込みエラー'); console.error(e); });
+      }
+
+      async playFile() {
+        try {
+          if (!this.audioElement) { this.updateStatus('先にファイルを選択してください'); return; }
+          this.ensureAudioContext();
+          await this.audioContext.resume();
+          this.disconnectCurrentSources();
+          this.mediaElementSource = this.audioContext.createMediaElementSource(this.audioElement);
+          this.mediaElementSource.connect(this.analyser);
+          this.analyser.connect(this.audioContext.destination);
+          this.audioElement.currentTime = 0;
+          await this.audioElement.play();
+          this.isPlaying = true;
+          this.updateStatus('ファイル再生中...');
+        } catch (err) { this.updateStatus('再生エラー: ' + err.message); console.error(err); }
+      }
+
+      stopAudio() {
+        this.isPlaying = false;
+        try { if (this.audioElement) this.audioElement.pause(); } catch {}
+        this.disconnectCurrentSources();
+        this.updateStatus('オーディオ停止');
+      }
+
+      async startRecording() {
+        try {
+          const stream = this.canvas.captureStream(30);
+          if (this.mediaStream) {
+            const audioTrack = this.mediaStream.getAudioTracks()[0];
+            if (audioTrack) stream.addTrack(audioTrack);
+          }
+          this.mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus' });
+          this.recordedChunks = [];
+          this.mediaRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) this.recordedChunks.push(ev.data); };
+          this.mediaRecorder.onstop = () => {
+            const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'audio_visualizer_' + Date.now() + '.webm';
+            document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+          };
+          this.mediaRecorder.start();
+          document.getElementById('startRecording').disabled = true;
+          document.getElementById('stopRecording').disabled = false;
+          document.getElementById('status').classList.add('recording');
+          this.updateStatus('録画中... 🔴');
+        } catch (err) { this.updateStatus('録画開始エラー: ' + err.message); console.error(err); }
+      }
+
+      stopRecording() {
+        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+          this.mediaRecorder.stop();
+          document.getElementById('startRecording').disabled = false;
+          document.getElementById('stopRecording').disabled = true;
+          document.getElementById('status').classList.remove('recording');
+          this.updateStatus('録画完了 - ダウンロード開始');
+        }
+      }
+
+      computeBandEnergies() {
+        if (!(this.isPlaying && this.analyser && this.dataArray)) { this.bandEnergies.fill(0); return this.bandEnergies; }
+        this.analyser.getByteFrequencyData(this.dataArray);
+        const mags = this.dataArray;
+        const nyquist = (this.audioContext && this.audioContext.sampleRate ? this.audioContext.sampleRate : 48000) / 2;
+        const binHz = nyquist / mags.length;
+
+        const energies = new Array(7).fill(0);
+        for (let i = 0; i < mags.length; i++) {
+          const f = i * binHz;
+          if (f < this.bandEdges[0] || f >= this.bandEdges[this.bandEdges.length - 1]) continue;
+          let band = 0;
+          while (band < 7 && !(f >= this.bandEdges[band] && f < this.bandEdges[band+1])) band++;
+          if (band >= 7) continue;
+          const m = mags[i] / 255;
+          energies[band] += m * m;
+        }
+
+        let maxE = 1e-6;
+        for (let i = 0; i < 7; i++) if (energies[i] > maxE) maxE = energies[i];
+        for (let i = 0; i < 7; i++) {
+          const e = (energies[i] / maxE) * this.bandGains[i];
+          this.bandEnergies[i] = 0.6 * this.bandEnergies[i] + 0.4 * e;
+          if (this.bandEnergies[i] > 1.6) this.bandEnergies[i] = 1.6;
+        }
+        return this.bandEnergies;
+      }
+
+      spawnLeaves(dt, bandEs) {
+        const loudness = bandEs.reduce((a,b)=>a+b,0) / bandEs.length;
+        if (loudness < 0.01) return;
+
+        const spawnPerSec = 10 + 35 * Math.min(1, loudness);
+        this.spawnAccumulator += spawnPerSec * dt;
+
+        while (this.spawnAccumulator >= 1) {
+          this.spawnAccumulator -= 1;
+
+          // キャップ処理：空中＆接地直後の葉は絶対に消さない
+          if (this.leaves.length >= this.maxLeaves) {
+            let idx = this.leaves.findIndex(l => l.isDone);
+            if (idx !== -1) {
+              this.leaves.splice(idx, 1);
+            } else {
+              // 退避候補が無ければ新規スポーンしない（安全第一）
+              break;
+            }
+          }
+
+          const total = bandEs.reduce((a,b)=>a+b,0) + 1e-6;
+          let r = Math.random() * total;
+          let band = 0;
+          for (; band < 7; band++) { r -= bandEs[band]; if (r <= 0) break; }
+          if (band > 6) band = 6;
+
+          const energy = Math.max(0.0, Math.min(1.0, bandEs[band] / 1.6));
+          const color = this.pastelColors[band];
+          const size = 14 + 16 * energy;
+          const speed = Math.max(30, (60 + 140 * energy) * this.fallSpeedMul);
+          const swing = 8 + 22 * energy;
+
+          const wordPool = Math.random() < 0.33 ? this.hiraList : (Math.random() < 0.5 ? this.kataList : this.abcList);
+          const word = this.randomWordStringFrom(wordPool);
+          const font = this.wordFonts[Math.floor(Math.random()*this.wordFonts.length)];
+
+          this.leaves.push(new Leaf(this.logicalW, this.logicalH, { color, size, speed, swing, word, font }));
+        }
+      }
+
+      randomWordStringFrom(list) {
+        const len = Math.floor(Math.random() * 4) + 1;
+        let s = ""; for (let i = 0; i < len; i++) s += list[Math.floor(Math.random() * list.length)];
+        return s;
+      }
+
+      updateStatus(msg) { const el = document.getElementById('status'); if (el) el.textContent = msg; }
+
+      animate() {
+        const now = performance.now();
+        const dt = Math.min(0.05, (now - this.lastTs) / 1000);
+        this.lastTs = now;
+        this.draw(dt);
+        requestAnimationFrame(() => this.animate());
+      }
+
+      draw(dt) {
+        this.ctx.clearRect(0, 0, this.logicalW, this.logicalH);
+
+        const bandEs = this.computeBandEnergies();
+        this.spawnLeaves(dt, bandEs);
+
+        for (let i = this.leaves.length - 1; i >= 0; i--) {
+          const leaf = this.leaves[i];
+          leaf.update(dt, this.logicalW, this.logicalH, this.windStrength);
+          leaf.display(this.ctx);
+          if (leaf.isDone) this.leaves.splice(i, 1);
+        }
+      }
+    }
+
+    class Leaf {
+      constructor(w, h, opts) {
+        this.w = w; this.h = h;
+
+        this.color = opts.color || [200,200,200];
+        this.size = opts.size || 24;
+        this.speed = Math.max(30, opts.speed || 120);
+        this.swingBase = opts.swing || 18;
+        this.word = opts.word || "";
+        this.font = opts.font || "serif";
+
+        this.x = Math.random() * this.w;
+        this.y = - (10 + Math.random() * 40);
+        this.angle = Math.random() * Math.PI * 2;
+
+        this.reachedGround = false;
+        this.leafAlpha = 255;
+        this.wordAlpha = 0;
+        this.wordY = this.y;
+        this.wordState = 0;
+        this.wordTimer = 0;
+
+        this.isDone = false;
+      }
+
+      setGrounded() {
+        const groundY = this.h - Math.max(16, this.size * 0.9);
+        this.y = groundY;
+        this.reachedGround = true;
+        if (this.wordState === 0) this.wordState = 1;
+        // 一瞬でも必ず描かれるように微小値を入れる
+        if (this.wordAlpha <= 0) this.wordAlpha = 0.01;
+      }
+
+      update(dt, w, h, windStrength) {
+        this.w = w; this.h = h;
+
+        if (!this.reachedGround) {
+          this.y += this.speed * dt;
+          this.angle += 2.2 * dt;
+          const swing = this.swingBase * Math.max(0.1, windStrength);
+          this.x += Math.sin(this.angle) * swing * dt * 5;
+
+          if (this.x < -10) this.x = this.w + 10;
+          if (this.x > this.w + 10) this.x = -10;
+
+          const groundY = this.h - Math.max(16, this.size * 0.9);
+          if (this.y >= groundY || this.y > this.h + 40) {
+            this.setGrounded();
+          }
+        } else {
+          if (this.leafAlpha > 0) {
+            this.leafAlpha = Math.max(0, this.leafAlpha - 160 * dt);
+          }
+        }
+
+        this.updateWord(dt);
+      }
+
+      updateWord(dt) {
+        if (this.wordState === 1) {
+          this.wordAlpha = Math.min(255, this.wordAlpha + 480 * dt);
+          this.wordY = (this.reachedGround ? this.y : this.wordY) - 12 * dt;
+          if (this.wordAlpha >= 255) { this.wordState = 2; this.wordTimer = 0; }
+        } else if (this.wordState === 2) {
+          this.wordTimer += dt;
+          const hold = 0.6;
+          if (this.wordTimer > hold) {
+            this.wordAlpha = Math.max(0, this.wordAlpha - 140 * dt);
+            this.wordY -= 50 * dt;
+            if (this.wordAlpha <= 0) this.isDone = true;
+          }
+        }
+      }
+
+      display(ctx) {
+        const [r,g,b] = this.color;
+
+        if (!this.reachedGround || this.leafAlpha > 0) {
+          ctx.save();
+          ctx.translate(this.x, this.y);
+          ctx.rotate(Math.sin(this.angle) * 0.5);
+          const s = this.size / 20;
+          ctx.scale(s, s);
+          const alpha = this.reachedGround ? this.leafAlpha / 255 : 1;
+          ctx.fillStyle = `rgba(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)}, ${alpha})`;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.bezierCurveTo(10,-15, 10,-30, 0,-40);
+          ctx.bezierCurveTo(-10,-30, -10,-15, 0, 0);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = `rgba(0,0,0,${alpha * 0.22})`;
+          ctx.lineWidth = 0.5;
+          ctx.beginPath();
+          ctx.moveTo(0,0);
+          ctx.lineTo(0,-20);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        if (this.wordState >= 1 && this.wordAlpha > 0) {
+          ctx.save();
+          ctx.fillStyle = `rgba(${Math.floor(r)}, ${Math.floor(g)}, ${Math.floor(b)}, ${this.wordAlpha / 255})`;
+          ctx.font = `${Math.max(14, this.size * 1.3)}px ${this.font}`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(this.word, this.x, this.wordY);
+          ctx.restore();
+        }
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => new AudioVisualizer());
+  </script>
+</body>
+</html>
