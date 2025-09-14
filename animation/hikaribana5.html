@@ -3,14 +3,12 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-<title>Blue Hikari-Bana — Glitter Bloom+ (mobile friendly)</title>
+<title>Blue Hikari-Bana — Glitter Bloom+</title>
 <style>
   :root{--line:#1b2a4a}
   html,body{margin:0;height:100%;background:#061022;color:#cfe3ff;font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif}
   #wrap{position:fixed;inset:0;overflow:hidden}
   canvas{display:block;width:100%;height:100%}
-
-  /* ---- UI ---- */
   .ui{position:fixed;left:12px;top:12px;display:flex;gap:.5rem;flex-wrap:wrap;z-index:10}
   .card{backdrop-filter: blur(8px); background:rgba(8,12,22,.55); border:1px solid var(--line); border-radius:12px; padding:10px 12px}
   .row{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem}
@@ -20,30 +18,13 @@
   button:disabled{opacity:.55}
   .pill{display:inline-block;border:1px solid var(--line);padding:2px 8px;border-radius:999px;font-size:.75rem;background:#0e1b33}
   a.dl{color:#9ad0ff}
-
-  /* UIトグルボタン（常に表示） */
-  #toggleUI{
-    position:fixed; right:12px; top:12px; z-index:20;
-    background:#15233f; color:#e7efff; border:1px solid var(--line);
-    border-radius:10px; padding:8px 10px; cursor:pointer;
-  }
-  .hidden{ display:none !important; }
-
-  @media (pointer:coarse){
-    /* モバイルはボタン少し大きめ */
-    #toggleUI{ padding:10px 12px; font-size:16px; }
-  }
 </style>
 </head>
 <body>
 <div id="wrap"><canvas id="cv"></canvas></div>
 
-<!-- 右上に常駐させるUIトグル -->
-<button id="toggleUI" title="メニュー表示/非表示">☰ UI</button>
-
-<!-- 既存UI（左上） -->
 <audio id="player" controls playsinline preload="auto" style="position:fixed;left:-9999px;top:-9999px"></audio>
-<div class="ui card" id="panel" style="min-width:290px">
+<div class="ui card" style="min-width:290px">
   <div class="row"><strong>Blue Hikari-Bana</strong><span id="stat" class="pill">idle</span></div>
   <div class="row">
     <input id="file" type="file" accept=".mp3,.wav,audio/*">
@@ -61,15 +42,14 @@
 </div>
 
 <script>
-/* ================= Device flags ================= */
-const IS_MOBILE = (matchMedia && matchMedia('(pointer: coarse)').matches) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent||'');
-
 /* ================= Canvas ================= */
-const cv=document.getElementById('cv'), ctx=cv.getContext('2d',{alpha:false});
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 let DPR=Math.min(2,window.devicePixelRatio||1);
 function safeSize(){ const r=cv.getBoundingClientRect(); return {w:r.width||innerWidth||1,h:r.height||innerHeight||1}; }
 function fit(){ DPR=Math.min(2,window.devicePixelRatio||1); const s=safeSize(); cv.width=(s.w*DPR)|0; cv.height=(s.h*DPR)|0; }
-addEventListener('resize',fit,{passive:true}); requestAnimationFrame(fit); addEventListener('load',fit,{once:true});
+addEventListener('resize',fit,{passive:true});
+requestAnimationFrame(fit);
+addEventListener('load',fit,{once:true});
 
 /* ================= UI refs ================= */
 const player=document.getElementById('player');
@@ -82,18 +62,6 @@ const recBtn=document.getElementById('recBtn');
 const recStat=document.getElementById('recStat');
 const dlRow=document.getElementById('dlRow');
 const dlLink=document.getElementById('dl');
-const panel=document.getElementById('panel');
-const toggleUI=document.getElementById('toggleUI');
-
-/* ---- UI show/hide ---- */
-let uiHidden=false;
-function setUIHidden(h){
-  uiHidden=h; panel.classList.toggle('hidden', h);
-  localStorage.setItem('hikari_uiHidden', h?'1':'0');
-}
-toggleUI.addEventListener('click', ()=> setUIHidden(!uiHidden));
-window.addEventListener('keydown', (e)=>{ if(e.key==='h'||e.key==='H') setUIHidden(!uiHidden); });
-if(localStorage.getItem('hikari_uiHidden')==='1') setUIHidden(true);
 
 /* ================= Colors ================= */
 const COL={grad0:'#0e2a26', grad1:'#0c2230', grad2:'#0a1630', outline:'#a5c6ff', glow:'#9fc8ff', leaf:'#a5ffd9', leaf2:'#d6ffef'};
@@ -101,7 +69,8 @@ const hsl=(h,s,l,a=1)=>`hsla(${(h%360+360)%360},${s}%,${l}%,${a})`;
 
 /* ================= Sprites ================= */
 function spriteFlowerOutline(size=280){
-  const c=document.createElement('canvas'); c.width=c.height=size; const x=c.getContext('2d');
+  const c=document.createElement('canvas'); c.width=c.height=size;
+  const x=c.getContext('2d');
   const cx=size/2, cy=size*0.48, R=size*0.30, W=size*0.18;
   const halo=x.createRadialGradient(cx,cy,0,cx,cy,R*1.55);
   halo.addColorStop(0,'rgba(160,200,255,0.14)'); halo.addColorStop(1,'rgba(0,0,0,0)');
@@ -124,7 +93,8 @@ function spriteFlowerOutline(size=280){
   return c;
 }
 function spriteLeafOutline(size=240){
-  const c=document.createElement('canvas'); c.width=size; c.height=size; const x=c.getContext('2d');
+  const c=document.createElement('canvas'); c.width=size; c.height=size;
+  const x=c.getContext('2d');
   x.translate(size/2,size*0.94);
   const L=size*0.72, W=size*0.30;
   x.shadowColor=COL.leaf; x.shadowBlur=size*0.04;
@@ -138,7 +108,8 @@ function spriteLeafOutline(size=240){
   return c;
 }
 function spriteStem(w=18,h=180){
-  const c=document.createElement('canvas'); c.width=w; c.height=h; const x=c.getContext('2d');
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const x=c.getContext('2d');
   const g=x.createLinearGradient(0,0,0,h);
   g.addColorStop(0,'rgba(110,220,190,0.35)');
   g.addColorStop(0.75,'rgba(90,200,170,0.32)');
@@ -176,15 +147,16 @@ const STARS_BIG  =Array.from({length:STAR_BIG_COUNT},  ()=>({x:Math.random(), y:
 let starHue=220, starHueTarget=220;
 function fadeByY(y, H){
   const y01 = Math.max(0, Math.min(1, y / H));
-  const START = FLOWER_BAND - 0.02; // 地平線より少し上から
-  const DEPTH = 0.95;               // 下側どれだけ消すか
-  const CURVE = 1.7;                // カーブ強度
+  const START = FLOWER_BAND - 0.02; // フェード開始位置（地平線より少し上から）
+  const DEPTH = 0.95;               // 下側どれだけ消すか（↑で薄く）
+  const CURVE = 1.7;                // カーブが大きいほど下だけ強く薄くなる
+
   if (y01 < START) return 1;
   const k = (y01 - START) / (1 - START);
   return 1 - DEPTH * Math.pow(k, CURVE);
 }
-
 /* ================= Glitter Particles（大小ミックス） ================= */
+/* 大きめの“ぼけ光”スプライト */
 function makeBokehSprite(r){
   const c=document.createElement('canvas'); c.width=c.height=(r*2*DPR)|0;
   const x=c.getContext('2d'), cx=c.width/2, cy=c.height/2, R=r*DPR;
@@ -199,26 +171,26 @@ const BOKEH_SMALL=makeBokehSprite(2.6);
 const BOKEH_BIG  =makeBokehSprite(4.2);
 
 const PTC=[]; 
-const MAX_PARTICLES = IS_MOBILE ? 2200 : 3500;
-const EMIT_BUDGET_PER_FRAME = IS_MOBILE ? 180 : 320;
+const MAX_PARTICLES=3500;                 // 総上限（前より大きく）
+const EMIT_BUDGET_PER_FRAME=320;          // 1フレームの発生上限（安定用）
 let emitBudget=EMIT_BUDGET_PER_FRAME;
 
 function beginFrame(){ emitBudget=EMIT_BUDGET_PER_FRAME; }
 function addParticle(x,y,vyBase,spread=0){
   if(emitBudget<=0 || PTC.length>=MAX_PARTICLES) return;
-  const big = Math.random()<0.32;
+  const big = Math.random()<0.32; // 32%を大粒グローに
   const sz  = big ? (Math.random()<0.5?BOKEH_BIG:BOKEH_SMALL) : 0; // 0=点描
   PTC.push({
     x: x + (Math.random()-0.5)*spread,
     y: y + (Math.random()-0.5)*spread,
-    vx:(Math.random()-0.5)*0.06*DPR,
-    vy:-(vyBase + Math.random()*0.22)*DPR,
-    ay:-0.010*DPR,
-    ttl: (IS_MOBILE? 2.0:1.6) + Math.random()*(IS_MOBILE? 2.0:1.8),
+    vx:(Math.random()-0.5)*0.06*DPR,            // 微ドリフト
+    vy:-(vyBase + Math.random()*0.22)*DPR,      // 上昇
+    ay:-0.010*DPR,                               // ゆっくり加速してさらに上へ
+    ttl: 1.6 + Math.random()*1.8,                // 時間寿命
     type: sz ? 'glow':'dot',
     spr: sz,
-    tw: Math.random()*Math.PI*2,
-    s: (Math.random()<0.5?1:2)
+    tw: Math.random()*Math.PI*2,                 // きらめき用位相
+    s: (Math.random()<0.5?1:2)                   // dotサイズ
   });
   emitBudget--;
 }
@@ -227,23 +199,32 @@ function spawnGlitter(x,y,n=10,up=0.60){
   for(let i=0;i<n;i++) addParticle(x,y,up,spread);
 }
 function drawParticles(dt){
-  const H=cv.height, SKY_TOP=H*0.06;
+  const W=cv.width,H=cv.height, SKY_TOP=H*0.06; // 上空フェード開始
   ctx.globalCompositeOperation='lighter';
   for(let i=PTC.length-1;i>=0;i--){
-    const p=PTC[i]; p.ttl-=dt; if(p.ttl<=0){ PTC.splice(i,1); continue; }
-    p.vx+= (Math.random()-0.5)*0.002*DPR;
+    const p=PTC[i];
+    p.ttl-=dt;
+    if(p.ttl<=0){ PTC.splice(i,1); continue; }
+    // 動き
+    p.vx+= (Math.random()-0.5)*0.002*DPR;   // ほんの少し揺らぎ
     p.vy+= p.ay*dt*60;
-    p.x += p.vx; p.y += p.vy;
+    p.x += p.vx;
+    p.y += p.vy;
 
-    let a=Math.max(0,Math.min(1,p.ttl/(IS_MOBILE?2.0:1.6)))*0.9;
+    // フェード（時間＋上空ブレンド）
+    let a=Math.max(0,Math.min(1,p.ttl/1.6))*0.9;
     if(p.y < SKY_TOP){ a *= Math.max(0, (p.y / SKY_TOP)); }
+    // きらめき
     a *= 0.75 + 0.25*(0.5+0.5*Math.sin(p.tw += dt*9));
     if(a<=0.01){ PTC.splice(i,1); continue; }
 
     ctx.globalAlpha=a;
+
     if(p.type==='glow'){
+      // グロー（白→lighterで青寄り）
       ctx.drawImage(p.spr, p.x-p.spr.width/2, p.y-p.spr.height/2);
     }else{
+      // 小さな点（青っぽい）
       const s=p.s*DPR;
       ctx.fillStyle=hsl(starHue,90,88,0.95);
       ctx.fillRect(p.x-s/2, p.y-s/2, s, s);
@@ -273,9 +254,7 @@ function nearestDegreeHue(freq){
 function ensureAudio(){
   if(audioCtx) return;
   audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-  analyser=audioCtx.createAnalyser();
-  analyser.fftSize=2048;
-  analyser.smoothingTimeConstant = IS_MOBILE ? 0.92 : 0.8; // ← モバイルはよりスムーズ
+  analyser=audioCtx.createAnalyser(); analyser.fftSize=2048; analyser.smoothingTimeConstant=0.8;
   destNode=audioCtx.createMediaStreamDestination();
 }
 function disconnectSources(){ try{mediaElSource&&mediaElSource.disconnect();}catch{} try{micSource&&micSource.disconnect();}catch{} }
@@ -298,21 +277,16 @@ function sampleAudio(){
   const freq=new Uint8Array(N), time=new Uint8Array(analyser.fftSize);
   analyser.getByteFrequencyData(freq); analyser.getByteTimeDomainData(time);
 
-  // RMS -> level
   let sum=0; for(let i=0;i<time.length;i++){ const v=(time[i]-128)/128; sum+=v*v; }
   const rms=Math.sqrt(sum/time.length);
   const level=rms*parseFloat(sens.value);
 
-  // モバイルは減衰の検出を緩める
-  const alphaUp= IS_MOBILE ? 0.20 : 0.28;
-  const alphaDown= IS_MOBILE ? 0.06 : 0.08;
+  const alphaUp=0.28, alphaDown=0.08;
   lvlSmooth += (level - lvlSmooth) * (level>lvlSmooth?alphaUp:alphaDown);
-  const decay=(lvlSmooth - lvlPrev) < (IS_MOBILE ? -0.004 : -0.002);
-  lvlPrev=lvlSmooth;
+  const decay=(lvlSmooth - lvlPrev)<-0.002; lvlPrev=lvlSmooth;
 
-  // 中域平均（200～3000Hz）
   const sr=(audioCtx?.sampleRate||44100), hzPerBin=sr/analyser.fftSize;
-  const s=Math.max(0,Math.floor(200/hzPerBin)), e=Math.min(N-1,Math.ceil(3000/hzPerBin));
+  const s=Math.max(0,Math.floor(100/hzPerBin)), e=Math.min(N-1,Math.ceil(3000/hzPerBin));
   let acc=0,c=0,maxV=0,maxI=s;
   for(let i=s;i<=e;i++){ const v=freq[i]; acc+=v; c++; if(v>maxV){maxV=v; maxI=i;} }
   const mid=(acc/(c||1))/255, domHz=maxI*hzPerBin;
@@ -321,14 +295,13 @@ function sampleAudio(){
   return {level:lvlSmooth, mid, decay, domHz};
 }
 
-/* ================= UI (file/mic/play) ================= */
+/* ================= UI ================= */
 fileInp.addEventListener('change', ()=>{
   const f=fileInp.files&&fileInp.files[0]; if(!f) return;
   ensureAudio(); try{player.pause();}catch{}
   isPlaying=false; syncBtn();
   if(player.src) URL.revokeObjectURL(player.src);
-  player.src=URL.createObjectURL(f);
-  player.loop=false;                 // ★ 自動リピートOFF
+  player.src=URL.createObjectURL(f); player.loop=true;
   connectPlayer(); stat.textContent='file loaded';
 });
 micBtn.addEventListener('click', async ()=>{
@@ -348,7 +321,7 @@ playBtn.addEventListener('click', async ()=>{
 });
 player.addEventListener('play', ()=>{isPlaying=true; syncBtn(); stat.textContent='playing';});
 player.addEventListener('pause',()=>{isPlaying=false; syncBtn(); stat.textContent='paused';});
-player.addEventListener('ended',()=>{isPlaying=false; syncBtn(); stat.textContent='ended';}); // ★ 一度終了
+player.addEventListener('ended',()=>{isPlaying=false; syncBtn(); stat.textContent='ended';});
 player.addEventListener('loadeddata',()=>{isPlaying=false; syncBtn();});
 function syncBtn(){ playBtn.textContent=isPlaying?'停止':'再生'; }
 
@@ -440,9 +413,9 @@ function drawFlowerAt(p,z,alpha){
   ctx.globalAlpha=1;
 }
 
-/* 連続エミット（常時ラメ） */
-const CONT_EMIT_BASE = 0.6;                 // /sec per flower（無音）
-const CONT_EMIT_GAIN = IS_MOBILE ? 18.0:22.0;// モバイルは少し控えめ
+/* 連続エミット（強化） */
+const CONT_EMIT_BASE = 0.6;   // /sec per flower（無音）
+const CONT_EMIT_GAIN = 22.0;  // /sec per flower（level=1で加算・強め）
 function updateFlowers(dt,t,A){
   for(const f of FIELD){
     if(f.phase==='off') continue;
@@ -457,23 +430,21 @@ function updateFlowers(dt,t,A){
     }else if(f.phase==='on'){
       f.alpha=0.95;
 
-      // —— 常時ラメ（音量×距離）——
+      // —— 常時ラメ（音量×距離で増える・強化版）——
       let rate = (CONT_EMIT_BASE + CONT_EMIT_GAIN*Math.pow(A.level,0.85)) * (0.55 + 0.85*f.z01); // /sec
       f.emitAcc += rate*dt;
       while(f.emitAcc>=1){
         addParticle(
           p.x, headY,
-          0.62 + f.z01*0.16,
-          flowerPx(f.z01)*0.18*DPR
+          0.62 + f.z01*0.16,                // 初速
+          flowerPx(f.z01)*0.18*DPR          // ばらけ
         );
         f.emitAcc-=1;
         if(emitBudget<=0) break;
       }
 
-      // 寿命 or 減衰で消す（モバイルは緩め）
-      const decayBase = IS_MOBILE ? 0.12 : 0.35;
-      const decayGain = IS_MOBILE ? 0.22 : 0.45;
-      if(f.t>f.life || (A.decay && f.t>0.12 && Math.random()<(decayBase + A.level*decayGain))){
+      // 寿命 or 減衰で消す
+      if(f.t>f.life || (A.decay && f.t>0.12 && Math.random()<(0.35+A.level*0.45))){
         f.phase='vanish'; f.t=0; f.sparked=false;
       }
     }else if(f.phase==='vanish'){
@@ -492,6 +463,7 @@ function updateFlowers(dt,t,A){
       if(k>=1){ f.phase='off'; f.t=0; f.emitAcc=0; }
     }
 
+    // 描画
     drawFlowerAt(p,f.z01,f.alpha);
   }
 }
@@ -508,8 +480,6 @@ function pickSpawnSlots(n){
     const minSep=(16 + f.z01*24)*DPR; let ok=true;
     for(const o of ons){ const dx=p.x-o.x, dy=p.y-o.y; if(dx*dx+dy*dy<minSep*minSep){ ok=false; break; } }
     if(ok){
-      for(const j of idxs){ const q=proj(FIELD[j].x01,FIELDS[j]?.z01??FIELD[j].z01,FIELD[j].dy); /* safety */ }
-      // 2回目の近接チェック
       for(const j of idxs){ const q=proj(FIELD[j].x01,FIELD[j].z01,FIELD[j].dy); const dx=p.x-q.x, dy=p.y-q.y; if(dx*dx+dy*dy<minSep*minSep){ ok=false; break; } }
       if(ok) idxs.push(i);
     }
@@ -518,17 +488,11 @@ function pickSpawnSlots(n){
 }
 function spawnLogic(A){
   if(!isPlaying) return;
-  const base = IS_MOBILE ? 10 : 14;
-  const mult = IS_MOBILE ? 70 : 100;
-  const idleMin = IS_MOBILE ? 6 : 2;  // 無音でも最低限は残す
-  const target=Math.max(idleMin, Math.floor(base + A.mid*mult));
+  const target=Math.floor(14 + A.mid*100);
   const alive=FIELD.reduce((n,f)=>n+(f.phase!=='off'),0);
   const need=Math.max(0,target-alive);
-  for(const i of pickSpawnSlots(Math.min(need, IS_MOBILE?10:15))){
-    const f=FIELD[i];
-    f.phase='appear'; f.t=0;
-    f.life=(IS_MOBILE? 3.2:1.6) + Math.random()*(IS_MOBILE? 3.0:2.0); // ★ モバイルは長寿命
-    f.alpha=0; f.sparked=false; f.emitAcc=0;
+  for(const i of pickSpawnSlots(Math.min(need,15))){
+    const f=FIELD[i]; f.phase='appear'; f.t=0; f.life=1.6+Math.random()*2.0; f.alpha=0; f.sparked=false; f.emitAcc=0;
   }
 }
 
@@ -536,7 +500,7 @@ function spawnLogic(A){
 function loop(){
   const now=performance.now(); const dt=Math.min(0.033,(now-lastTS)/1000); lastTS=now;
   const A=sampleAudio();
-  beginFrame();
+  beginFrame();                // 粒子予算リセット
   drawBackground(now*0.001);
   spawnLogic(A);
   updateFlowers(dt, now*0.001, A);
