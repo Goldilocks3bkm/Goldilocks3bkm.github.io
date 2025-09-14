@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
-<title>Blue Hikari-Bana — Glitter Bloom+</title>
+<title>Blue Hikari-Bana — Glitter Bloom+ (stable base + mobile/UI)</title>
 <style>
   :root{--line:#1b2a4a}
   html,body{margin:0;height:100%;background:#061022;color:#cfe3ff;font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif}
@@ -18,13 +18,23 @@
   button:disabled{opacity:.55}
   .pill{display:inline-block;border:1px solid var(--line);padding:2px 8px;border-radius:999px;font-size:.75rem;background:#0e1b33}
   a.dl{color:#9ad0ff}
+
+  /* UIトグル（常時右上） */
+  #toggleUI{
+    position:fixed; right:12px; top:12px; z-index:20;
+    background:#15233f; color:#e7efff; border:1px solid var(--line);
+    border-radius:10px; padding:8px 10px; cursor:pointer;
+  }
+  .hidden{ display:none !important; }
 </style>
 </head>
 <body>
 <div id="wrap"><canvas id="cv"></canvas></div>
 
+<button id="toggleUI" title="メニュー表示/非表示">☰ UI</button>
+
 <audio id="player" controls playsinline preload="auto" style="position:fixed;left:-9999px;top:-9999px"></audio>
-<div class="ui card" style="min-width:290px">
+<div class="ui card" id="panel" style="min-width:290px">
   <div class="row"><strong>Blue Hikari-Bana</strong><span id="stat" class="pill">idle</span></div>
   <div class="row">
     <input id="file" type="file" accept=".mp3,.wav,audio/*">
@@ -42,6 +52,10 @@
 </div>
 
 <script>
+/* ===== Device flag (for mobile tuning) ===== */
+const IS_MOBILE = (matchMedia && matchMedia('(pointer: coarse)').matches) ||
+                  /Android|iPhone|iPad|iPod/i.test(navigator.userAgent||'');
+
 /* ================= Canvas ================= */
 const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 let DPR=Math.min(2,window.devicePixelRatio||1);
@@ -62,6 +76,17 @@ const recBtn=document.getElementById('recBtn');
 const recStat=document.getElementById('recStat');
 const dlRow=document.getElementById('dlRow');
 const dlLink=document.getElementById('dl');
+const panel=document.getElementById('panel');
+const toggleUI=document.getElementById('toggleUI');
+
+/* ---- UI show/hide ---- */
+function setUIHidden(h){
+  panel.classList.toggle('hidden', h);
+  localStorage.setItem('hikari_uiHidden', h?'1':'0');
+}
+toggleUI.addEventListener('click', ()=> setUIHidden(panel.classList.contains('hidden') ? false : true));
+addEventListener('keydown', (e)=>{ if(e.key==='h'||e.key==='H') setUIHidden(panel.classList.contains('hidden') ? false : true); });
+if(localStorage.getItem('hikari_uiHidden')==='1') setUIHidden(true);
 
 /* ================= Colors ================= */
 const COL={grad0:'#0e2a26', grad1:'#0c2230', grad2:'#0a1630', outline:'#a5c6ff', glow:'#9fc8ff', leaf:'#a5ffd9', leaf2:'#d6ffef'};
@@ -147,16 +172,15 @@ const STARS_BIG  =Array.from({length:STAR_BIG_COUNT},  ()=>({x:Math.random(), y:
 let starHue=220, starHueTarget=220;
 function fadeByY(y, H){
   const y01 = Math.max(0, Math.min(1, y / H));
-  const START = FLOWER_BAND - 0.02; // フェード開始位置（地平線より少し上から）
-  const DEPTH = 0.95;               // 下側どれだけ消すか（↑で薄く）
-  const CURVE = 1.7;                // カーブが大きいほど下だけ強く薄くなる
-
+  const START = FLOWER_BAND - 0.02;
+  const DEPTH = 0.95;
+  const CURVE = 1.7;
   if (y01 < START) return 1;
   const k = (y01 - START) / (1 - START);
   return 1 - DEPTH * Math.pow(k, CURVE);
 }
-/* ================= Glitter Particles（大小ミックス） ================= */
-/* 大きめの“ぼけ光”スプライト */
+
+/* ================= Glitter Particles ================= */
 function makeBokehSprite(r){
   const c=document.createElement('canvas'); c.width=c.height=(r*2*DPR)|0;
   const x=c.getContext('2d'), cx=c.width/2, cy=c.height/2, R=r*DPR;
@@ -171,26 +195,26 @@ const BOKEH_SMALL=makeBokehSprite(2.6);
 const BOKEH_BIG  =makeBokehSprite(4.2);
 
 const PTC=[]; 
-const MAX_PARTICLES=3500;                 // 総上限（前より大きく）
-const EMIT_BUDGET_PER_FRAME=320;          // 1フレームの発生上限（安定用）
+const MAX_PARTICLES=3500;
+const EMIT_BUDGET_PER_FRAME=320;
 let emitBudget=EMIT_BUDGET_PER_FRAME;
 
 function beginFrame(){ emitBudget=EMIT_BUDGET_PER_FRAME; }
 function addParticle(x,y,vyBase,spread=0){
   if(emitBudget<=0 || PTC.length>=MAX_PARTICLES) return;
-  const big = Math.random()<0.32; // 32%を大粒グローに
+  const big = Math.random()<0.32;
   const sz  = big ? (Math.random()<0.5?BOKEH_BIG:BOKEH_SMALL) : 0; // 0=点描
   PTC.push({
     x: x + (Math.random()-0.5)*spread,
     y: y + (Math.random()-0.5)*spread,
-    vx:(Math.random()-0.5)*0.06*DPR,            // 微ドリフト
-    vy:-(vyBase + Math.random()*0.22)*DPR,      // 上昇
-    ay:-0.010*DPR,                               // ゆっくり加速してさらに上へ
-    ttl: 1.6 + Math.random()*1.8,                // 時間寿命
+    vx:(Math.random()-0.5)*0.06*DPR,
+    vy:-(vyBase + Math.random()*0.22)*DPR,
+    ay:-0.010*DPR,
+    ttl: 1.6 + Math.random()*1.8,
     type: sz ? 'glow':'dot',
     spr: sz,
-    tw: Math.random()*Math.PI*2,                 // きらめき用位相
-    s: (Math.random()<0.5?1:2)                   // dotサイズ
+    tw: Math.random()*Math.PI*2,
+    s: (Math.random()<0.5?1:2)
   });
   emitBudget--;
 }
@@ -199,32 +223,24 @@ function spawnGlitter(x,y,n=10,up=0.60){
   for(let i=0;i<n;i++) addParticle(x,y,up,spread);
 }
 function drawParticles(dt){
-  const W=cv.width,H=cv.height, SKY_TOP=H*0.06; // 上空フェード開始
+  const H=cv.height, SKY_TOP=H*0.06;
   ctx.globalCompositeOperation='lighter';
   for(let i=PTC.length-1;i>=0;i--){
     const p=PTC[i];
-    p.ttl-=dt;
-    if(p.ttl<=0){ PTC.splice(i,1); continue; }
-    // 動き
-    p.vx+= (Math.random()-0.5)*0.002*DPR;   // ほんの少し揺らぎ
+    p.ttl-=dt; if(p.ttl<=0){ PTC.splice(i,1); continue; }
+    p.vx+= (Math.random()-0.5)*0.002*DPR;
     p.vy+= p.ay*dt*60;
-    p.x += p.vx;
-    p.y += p.vy;
+    p.x += p.vx; p.y += p.vy;
 
-    // フェード（時間＋上空ブレンド）
     let a=Math.max(0,Math.min(1,p.ttl/1.6))*0.9;
     if(p.y < SKY_TOP){ a *= Math.max(0, (p.y / SKY_TOP)); }
-    // きらめき
     a *= 0.75 + 0.25*(0.5+0.5*Math.sin(p.tw += dt*9));
     if(a<=0.01){ PTC.splice(i,1); continue; }
 
     ctx.globalAlpha=a;
-
     if(p.type==='glow'){
-      // グロー（白→lighterで青寄り）
       ctx.drawImage(p.spr, p.x-p.spr.width/2, p.y-p.spr.height/2);
     }else{
-      // 小さな点（青っぽい）
       const s=p.s*DPR;
       ctx.fillStyle=hsl(starHue,90,88,0.95);
       ctx.fillRect(p.x-s/2, p.y-s/2, s, s);
@@ -233,7 +249,7 @@ function drawParticles(dt){
   ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
 }
 
-/* ================= Audio（ピッチ→七色） ================= */
+/* ================= Audio（元の安定配線） ================= */
 let audioCtx, analyser, mediaElSource=null, micSource=null, destNode;
 let isPlaying=false, sourceType='none';
 let lvlPrev=0, lvlSmooth=0, lastTS=performance.now();
@@ -254,21 +270,26 @@ function nearestDegreeHue(freq){
 function ensureAudio(){
   if(audioCtx) return;
   audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-  analyser=audioCtx.createAnalyser(); analyser.fftSize=2048; analyser.smoothingTimeConstant=0.8;
+  analyser=audioCtx.createAnalyser(); analyser.fftSize=2048; analyser.smoothingTimeConstant= IS_MOBILE ? 0.92 : 0.8;
   destNode=audioCtx.createMediaStreamDestination();
 }
 function disconnectSources(){ try{mediaElSource&&mediaElSource.disconnect();}catch{} try{micSource&&micSource.disconnect();}catch{} }
 function connectPlayer(){
   ensureAudio();
-  if(!mediaElSource) mediaElSource=audioCtx.createMediaElementSource(player);
-  disconnectSources(); mediaElSource.connect(analyser); mediaElSource.connect(audioCtx.destination); mediaElSource.connect(destNode);
+  if(!mediaElSource) mediaElSource=audioCtx.createMediaElementSource(player); // 一度だけ
+  disconnectSources();
+  mediaElSource.connect(analyser);
+  mediaElSource.connect(audioCtx.destination);
+  mediaElSource.connect(destNode);
   sourceType='media'; playBtn.disabled=false; recBtn.disabled=false; syncBtn();
 }
 function connectMicStream(stream){
   ensureAudio();
   if(micSource){ try{micSource.disconnect();}catch{} }
   micSource=audioCtx.createMediaStreamSource(stream);
-  disconnectSources(); micSource.connect(analyser); micSource.connect(destNode);
+  disconnectSources();
+  micSource.connect(analyser);
+  micSource.connect(destNode);
   sourceType='mic'; playBtn.disabled=false; recBtn.disabled=false; syncBtn();
 }
 function sampleAudio(){
@@ -281,9 +302,10 @@ function sampleAudio(){
   const rms=Math.sqrt(sum/time.length);
   const level=rms*parseFloat(sens.value);
 
-  const alphaUp=0.28, alphaDown=0.08;
+  const alphaUp= IS_MOBILE ? 0.20 : 0.28;
+  const alphaDown= IS_MOBILE ? 0.06 : 0.08;
   lvlSmooth += (level - lvlSmooth) * (level>lvlSmooth?alphaUp:alphaDown);
-  const decay=(lvlSmooth - lvlPrev)<-0.002; lvlPrev=lvlSmooth;
+  const decay=(lvlSmooth - lvlPrev) < (IS_MOBILE ? -0.004 : -0.002); lvlPrev=lvlSmooth;
 
   const sr=(audioCtx?.sampleRate||44100), hzPerBin=sr/analyser.fftSize;
   const s=Math.max(0,Math.floor(100/hzPerBin)), e=Math.min(N-1,Math.ceil(3000/hzPerBin));
@@ -301,7 +323,8 @@ fileInp.addEventListener('change', ()=>{
   ensureAudio(); try{player.pause();}catch{}
   isPlaying=false; syncBtn();
   if(player.src) URL.revokeObjectURL(player.src);
-  player.src=URL.createObjectURL(f); player.loop=true;
+  player.src=URL.createObjectURL(f);
+  player.loop=false;                 // ★ 自動リピートOFF
   connectPlayer(); stat.textContent='file loaded';
 });
 micBtn.addEventListener('click', async ()=>{
@@ -321,11 +344,11 @@ playBtn.addEventListener('click', async ()=>{
 });
 player.addEventListener('play', ()=>{isPlaying=true; syncBtn(); stat.textContent='playing';});
 player.addEventListener('pause',()=>{isPlaying=false; syncBtn(); stat.textContent='paused';});
-player.addEventListener('ended',()=>{isPlaying=false; syncBtn(); stat.textContent='ended';});
+player.addEventListener('ended',()=>{isPlaying=false; syncBtn(); stat.textContent='ended';}); // ★ 一度停止で終了
 player.addEventListener('loadeddata',()=>{isPlaying=false; syncBtn();});
 function syncBtn(){ playBtn.textContent=isPlaying?'停止':'再生'; }
 
-/* 録画 */
+/* 録画（元のまま） */
 let recorder=null, chunks=[], mixStream;
 const recMime=(window.MediaRecorder && MediaRecorder.isTypeSupported && (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')||MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')))
   ? (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')?'video/webm;codecs=vp9,opus':'video/webm;codecs=vp8,opus')
@@ -349,17 +372,14 @@ function drawBackground(t){
   const W=cv.width,H=cv.height;
   if(!W||!H){ fit(); return; }
 
-  // 背景グラデ
   const g=ctx.createLinearGradient(0,H,0,0);
   g.addColorStop(0, COL.grad0);
   g.addColorStop(0.5, COL.grad1);
   g.addColorStop(1, COL.grad2);
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
 
-  // ドレミ色へゆっくり
   starHue += (starHueTarget - starHue)*0.08;
 
-  // 小粒の星
   for(const s of STARS_SMALL){
     const xr=s.x*W, yr=s.y*H;
     const tw=0.55 + 0.45*(0.5+0.5*Math.sin(t*1.8 + s.p)) + 0.15*(0.5+0.5*Math.sin(t*5.1 + s.p*1.7));
@@ -367,7 +387,6 @@ function drawBackground(t){
     ctx.fillStyle = hsl(starHue, 90, 85);
     ctx.fillRect(xr, yr, s.s*DPR, s.s*DPR);
   }
-  // 大粒の星
   ctx.globalAlpha=1;
   for(const s of STARS_BIG){
     const xr=s.x*W, yr=s.y*H;
@@ -389,11 +408,9 @@ function drawFlowerAt(p,z,alpha){
   const fx=flowerPx(z)*DPR, st=stemPx(z)*DPR, lf=leafLen(z)*DPR;
   ctx.globalAlpha=alpha;
 
-  // stem
   const ss=st/SPR.stem.height;
   ctx.drawImage(SPR.stem, p.x-(SPR.stem.width*ss)/2, p.y-st, SPR.stem.width*ss, st);
 
-  // leaves
   const ls=lf/SPR.leaf.height;
   const rootY=p.y-Math.min(st*0.06,8*DPR);
   const theta=0.85;
@@ -404,7 +421,6 @@ function drawFlowerAt(p,z,alpha){
   ctx.drawImage(SPR.leaf,-SPR.leaf.width*0.5*ls,-SPR.leaf.height*ls,SPR.leaf.width*ls,SPR.leaf.height*ls);
   ctx.restore();
 
-  // flower（青輪郭）
   const fs=fx/SPR.flower.width;
   ctx.save(); ctx.shadowColor=COL.outline; ctx.shadowBlur=6*DPR;
   ctx.drawImage(SPR.flower, p.x-SPR.flower.width*0.5*fs, (p.y-st)-SPR.flower.height*0.5*fs, SPR.flower.width*fs, SPR.flower.height*fs);
@@ -413,9 +429,8 @@ function drawFlowerAt(p,z,alpha){
   ctx.globalAlpha=1;
 }
 
-/* 連続エミット（強化） */
-const CONT_EMIT_BASE = 0.6;   // /sec per flower（無音）
-const CONT_EMIT_GAIN = 22.0;  // /sec per flower（level=1で加算・強め）
+const CONT_EMIT_BASE = 0.6;
+const CONT_EMIT_GAIN = 22.0;
 function updateFlowers(dt,t,A){
   for(const f of FIELD){
     if(f.phase==='off') continue;
@@ -430,32 +445,24 @@ function updateFlowers(dt,t,A){
     }else if(f.phase==='on'){
       f.alpha=0.95;
 
-      // —— 常時ラメ（音量×距離で増える・強化版）——
-      let rate = (CONT_EMIT_BASE + CONT_EMIT_GAIN*Math.pow(A.level,0.85)) * (0.55 + 0.85*f.z01); // /sec
+      let rate = (CONT_EMIT_BASE + CONT_EMIT_GAIN*Math.pow(A.level,0.85)) * (0.55 + 0.85*f.z01);
       f.emitAcc += rate*dt;
       while(f.emitAcc>=1){
-        addParticle(
-          p.x, headY,
-          0.62 + f.z01*0.16,                // 初速
-          flowerPx(f.z01)*0.18*DPR          // ばらけ
-        );
+        addParticle(p.x, headY, 0.62 + f.z01*0.16, flowerPx(f.z01)*0.18*DPR);
         f.emitAcc-=1;
         if(emitBudget<=0) break;
       }
 
-      // 寿命 or 減衰で消す
-      if(f.t>f.life || (A.decay && f.t>0.12 && Math.random()<(0.35+A.level*0.45))){
+      const decayBase = IS_MOBILE ? 0.12 : 0.35;
+      const decayGain = IS_MOBILE ? 0.22 : 0.45;
+      if(f.t>f.life || (A.decay && f.t>0.12 && Math.random()<(decayBase + A.level*decayGain))){
         f.phase='vanish'; f.t=0; f.sparked=false;
       }
     }else if(f.phase==='vanish'){
       if(!f.sparked){
         const burst = Math.min( 10 + ((f.z01*12)|0) + Math.floor(24*A.level), emitBudget );
         for(let k=0;k<burst;k++){
-          addParticle(
-            p.x, headY,
-            0.70 + f.z01*0.18,
-            flowerPx(f.z01)*0.25*DPR
-          );
+          addParticle(p.x, headY, 0.70 + f.z01*0.18, flowerPx(f.z01)*0.25*DPR);
         }
         f.sparked=true;
       }
@@ -463,12 +470,11 @@ function updateFlowers(dt,t,A){
       if(k>=1){ f.phase='off'; f.t=0; f.emitAcc=0; }
     }
 
-    // 描画
     drawFlowerAt(p,f.z01,f.alpha);
   }
 }
 
-/* ================= Spawn ================= */
+/* ===== Spawn（元のロジックを踏襲） ===== */
 function occupied(){ const a=[]; for(const f of FIELD) if(f.phase!=='off'){ const p=proj(f.x01,f.z01,f.dy); a.push({x:p.x,y:p.y,z:f.z01}); } return a; }
 function pickSpawnSlots(n){
   const ons=occupied(), idxs=[], off=[];
@@ -487,12 +493,15 @@ function pickSpawnSlots(n){
   return idxs;
 }
 function spawnLogic(A){
-  if(!isPlaying) return;
+  if(!isPlaying) return; // 再生中のみ（ベースを維持）
   const target=Math.floor(14 + A.mid*100);
   const alive=FIELD.reduce((n,f)=>n+(f.phase!=='off'),0);
   const need=Math.max(0,target-alive);
   for(const i of pickSpawnSlots(Math.min(need,15))){
-    const f=FIELD[i]; f.phase='appear'; f.t=0; f.life=1.6+Math.random()*2.0; f.alpha=0; f.sparked=false; f.emitAcc=0;
+    const f=FIELD[i];
+    f.phase='appear'; f.t=0;
+    f.life = (IS_MOBILE ? 3.0 : 1.6) + Math.random()*(IS_MOBILE ? 2.8 : 2.0); // ★スマホは長寿命
+    f.alpha=0; f.sparked=false; f.emitAcc=0;
   }
 }
 
@@ -500,7 +509,7 @@ function spawnLogic(A){
 function loop(){
   const now=performance.now(); const dt=Math.min(0.033,(now-lastTS)/1000); lastTS=now;
   const A=sampleAudio();
-  beginFrame();                // 粒子予算リセット
+  beginFrame();
   drawBackground(now*0.001);
   spawnLogic(A);
   updateFlowers(dt, now*0.001, A);
