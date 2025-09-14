@@ -298,7 +298,7 @@ fileInp.addEventListener('change', ()=>{
   isPlaying=false; syncBtn();
   if(player.src) URL.revokeObjectURL(player.src);
   player.src=URL.createObjectURL(f);
-  player.loop=true; // ベース版に合わせて維持（必要ならfalseへ）
+  player.loop=false; // ベース版に合わせて維持（必要ならfalseへ）
   connectPlayer(); stat.textContent='file loaded';
 });
 micBtn.addEventListener('click', async ()=>{
