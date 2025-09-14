@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>Blue Hikari-Bana — Glitter Bloom+</title>
+<style>
+  :root{--line:#1b2a4a}
+  html,body{margin:0;height:100%;background:#061022;color:#cfe3ff;font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif}
+  #wrap{position:fixed;inset:0;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+  .ui{position:fixed;left:12px;top:12px;display:flex;gap:.5rem;flex-wrap:wrap;z-index:10}
+  .card{backdrop-filter: blur(8px); background:rgba(8,12,22,.55); border:1px solid var(--line); border-radius:12px; padding:10px 12px}
+  .row{display:flex;align-items:center;gap:.5rem;margin-bottom:.5rem}
+  .row:last-child{margin-bottom:0}
+  input[type="range"]{width:160px}
+  button{background:#15233f;color:#e7efff;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+  button:disabled{opacity:.55}
+  .pill{display:inline-block;border:1px solid var(--line);padding:2px 8px;border-radius:999px;font-size:.75rem;background:#0e1b33}
+  a.dl{color:#9ad0ff}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="cv"></canvas></div>
+
+<audio id="player" controls playsinline preload="auto" style="position:fixed;left:-9999px;top:-9999px"></audio>
+<div class="ui card" style="min-width:290px">
+  <div class="row"><strong>Blue Hikari-Bana</strong><span id="stat" class="pill">idle</span></div>
+  <div class="row">
+    <input id="file" type="file" accept=".mp3,.wav,audio/*">
+    <button id="micBtn">マイク</button>
+    <button id="playBtn" disabled>再生</button>
+  </div>
+  <div class="row">
+    <label>感度</label><input id="sens" type="range" min="0.6" max="3" step="0.01" value="1.2">
+  </div>
+  <div class="row">
+    <button id="recBtn" disabled>録画開始</button>
+    <span id="recStat" class="pill">not recording</span>
+  </div>
+  <div class="row" id="dlRow" style="display:none">録画完了：<a id="dl" class="dl" download="hikari-visualizer.webm">ダウンロード</a></div>
+</div>
+
+<script>
+/* ================= Canvas ================= */
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+let DPR=Math.min(2,window.devicePixelRatio||1);
+function safeSize(){ const r=cv.getBoundingClientRect(); return {w:r.width||innerWidth||1,h:r.height||innerHeight||1}; }
+function fit(){ DPR=Math.min(2,window.devicePixelRatio||1); const s=safeSize(); cv.width=(s.w*DPR)|0; cv.height=(s.h*DPR)|0; }
+addEventListener('resize',fit,{passive:true});
+requestAnimationFrame(fit);
+addEventListener('load',fit,{once:true});
+
+/* ================= UI refs ================= */
+const player=document.getElementById('player');
+const stat=document.getElementById('stat');
+const fileInp=document.getElementById('file');
+const micBtn=document.getElementById('micBtn');
+const playBtn=document.getElementById('playBtn');
+const sens=document.getElementById('sens');
+const recBtn=document.getElementById('recBtn');
+const recStat=document.getElementById('recStat');
+const dlRow=document.getElementById('dlRow');
+const dlLink=document.getElementById('dl');
+
+/* ================= Colors ================= */
+const COL={grad0:'#0e2a26', grad1:'#0c2230', grad2:'#0a1630', outline:'#a5c6ff', glow:'#9fc8ff', leaf:'#a5ffd9', leaf2:'#d6ffef'};
+const hsl=(h,s,l,a=1)=>`hsla(${(h%360+360)%360},${s}%,${l}%,${a})`;
+
+/* ================= Sprites ================= */
+function spriteFlowerOutline(size=280){
+  const c=document.createElement('canvas'); c.width=c.height=size;
+  const x=c.getContext('2d');
+  const cx=size/2, cy=size*0.48, R=size*0.30, W=size*0.18;
+  const halo=x.createRadialGradient(cx,cy,0,cx,cy,R*1.55);
+  halo.addColorStop(0,'rgba(160,200,255,0.14)'); halo.addColorStop(1,'rgba(0,0,0,0)');
+  x.fillStyle=halo; x.fillRect(0,0,size,size);
+  x.translate(cx,cy); x.lineJoin='round'; x.lineCap='round';
+  for(let i=0;i<6;i++){
+    const L=R*1.38; x.save(); x.rotate(i*Math.PI/3);
+    x.shadowColor=COL.glow; x.shadowBlur=size*0.04;
+    x.strokeStyle=COL.outline; x.lineWidth=size*0.018;
+    x.beginPath(); x.moveTo(0,0);
+    x.bezierCurveTo(-W*0.55,-L*0.25,-W*0.70,-L*0.70, 0,-L);
+    x.bezierCurveTo( W*0.70,-L*0.70, W*0.55,-L*0.25, 0,0);
+    x.closePath(); x.stroke();
+    x.shadowBlur=0; x.strokeStyle='rgba(165,200,255,0.35)'; x.lineWidth=size*0.006;
+    x.beginPath(); x.moveTo(0,-L*0.95); x.lineTo(0,-L*0.18); x.stroke();
+    x.restore();
+  }
+  x.shadowColor=COL.outline; x.shadowBlur=size*0.06;
+  x.fillStyle='#dbe9ff'; x.beginPath(); x.arc(0,0,size*0.02,0,Math.PI*2); x.fill();
+  return c;
+}
+function spriteLeafOutline(size=240){
+  const c=document.createElement('canvas'); c.width=size; c.height=size;
+  const x=c.getContext('2d');
+  x.translate(size/2,size*0.94);
+  const L=size*0.72, W=size*0.30;
+  x.shadowColor=COL.leaf; x.shadowBlur=size*0.04;
+  x.strokeStyle=COL.leaf; x.lineWidth=size*0.020;
+  x.beginPath(); x.moveTo(0,0);
+  x.quadraticCurveTo(-W,-L*0.28, 0,-L);
+  x.quadraticCurveTo( W,-L*0.28, 0,0);
+  x.closePath(); x.stroke();
+  x.shadowBlur=0; x.strokeStyle=COL.leaf2; x.lineWidth=size*0.012;
+  x.beginPath(); x.moveTo(0,-L*0.88); x.lineTo(0,-L*0.18); x.stroke();
+  return c;
+}
+function spriteStem(w=18,h=180){
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const x=c.getContext('2d');
+  const g=x.createLinearGradient(0,0,0,h);
+  g.addColorStop(0,'rgba(110,220,190,0.35)');
+  g.addColorStop(0.75,'rgba(90,200,170,0.32)');
+  g.addColorStop(1,'rgba(0,0,0,0)');
+  x.strokeStyle=g; x.lineWidth=w*0.55; x.lineCap='round';
+  x.shadowColor='rgba(110,220,190,0.25)'; x.shadowBlur=w*0.9;
+  x.beginPath(); x.moveTo(w*0.5,h); x.lineTo(w*0.5,0); x.stroke();
+  return c;
+}
+const SPR={flower:spriteFlowerOutline(280), leaf:spriteLeafOutline(240), stem:spriteStem(18,180)};
+
+/* ================= Layout / Scaling ================= */
+const FLOWER_BAND=0.62;
+const flowerPx=z => 20 + z*66;
+const stemPx  =z => 16 + z*58;
+const leafLen =z => flowerPx(z)*0.40;
+function proj(x01,z01,dy){
+  const W=cv.width,H=cv.height;
+  const yBase=H*(FLOWER_BAND + z01*(1-FLOWER_BAND));
+  return {x:(0.06+x01*0.88)*W, y:yBase+dy};
+}
+const FIELD=Array.from({length:220},()=>({
+  x01:Math.random(),
+  z01:Math.pow(Math.random(),1.35),
+  dy: Math.random()*(cv.height*0.04),
+  phase:'off', t:0, life:0, alpha:0, sparked:false,
+  emitAcc:0
+}));
+
+/* ================= Stars (no rotate) ================= */
+const STAR_SMALL_COUNT = 1800;
+const STAR_BIG_COUNT   = 180;
+const STARS_SMALL=Array.from({length:STAR_SMALL_COUNT},()=>({x:Math.random(), y:Math.random(), s:0.5+Math.random()*1.4, p:Math.random()*Math.PI*2}));
+const STARS_BIG  =Array.from({length:STAR_BIG_COUNT},  ()=>({x:Math.random(), y:Math.random(), s:1.1+Math.random()*2.8, p:Math.random()*Math.PI*2}));
+let starHue=220, starHueTarget=220;
+function fadeByY(y, H){
+  const y01 = Math.max(0, Math.min(1, y / H));
+  const START = FLOWER_BAND - 0.02; // フェード開始位置（地平線より少し上から）
+  const DEPTH = 0.95;               // 下側どれだけ消すか（↑で薄く）
+  const CURVE = 1.7;                // カーブが大きいほど下だけ強く薄くなる
+
+  if (y01 < START) return 1;
+  const k = (y01 - START) / (1 - START);
+  return 1 - DEPTH * Math.pow(k, CURVE);
+}
+/* ================= Glitter Particles（大小ミックス） ================= */
+/* 大きめの“ぼけ光”スプライト */
+function makeBokehSprite(r){
+  const c=document.createElement('canvas'); c.width=c.height=(r*2*DPR)|0;
+  const x=c.getContext('2d'), cx=c.width/2, cy=c.height/2, R=r*DPR;
+  const g=x.createRadialGradient(cx,cy,0,cx,cy,R);
+  g.addColorStop(0,'rgba(255,255,255,0.95)');
+  g.addColorStop(0.4,'rgba(255,255,255,0.55)');
+  g.addColorStop(1,'rgba(255,255,255,0)');
+  x.fillStyle=g; x.fillRect(0,0,c.width,c.height);
+  return c;
+}
+const BOKEH_SMALL=makeBokehSprite(2.6);
+const BOKEH_BIG  =makeBokehSprite(4.2);
+
+const PTC=[]; 
+const MAX_PARTICLES=3500;                 // 総上限（前より大きく）
+const EMIT_BUDGET_PER_FRAME=320;          // 1フレームの発生上限（安定用）
+let emitBudget=EMIT_BUDGET_PER_FRAME;
+
+function beginFrame(){ emitBudget=EMIT_BUDGET_PER_FRAME; }
+function addParticle(x,y,vyBase,spread=0){
+  if(emitBudget<=0 || PTC.length>=MAX_PARTICLES) return;
+  const big = Math.random()<0.32; // 32%を大粒グローに
+  const sz  = big ? (Math.random()<0.5?BOKEH_BIG:BOKEH_SMALL) : 0; // 0=点描
+  PTC.push({
+    x: x + (Math.random()-0.5)*spread,
+    y: y + (Math.random()-0.5)*spread,
+    vx:(Math.random()-0.5)*0.06*DPR,            // 微ドリフト
+    vy:-(vyBase + Math.random()*0.22)*DPR,      // 上昇
+    ay:-0.010*DPR,                               // ゆっくり加速してさらに上へ
+    ttl: 1.6 + Math.random()*1.8,                // 時間寿命
+    type: sz ? 'glow':'dot',
+    spr: sz,
+    tw: Math.random()*Math.PI*2,                 // きらめき用位相
+    s: (Math.random()<0.5?1:2)                   // dotサイズ
+  });
+  emitBudget--;
+}
+function spawnGlitter(x,y,n=10,up=0.60){
+  const spread=6*DPR;
+  for(let i=0;i<n;i++) addParticle(x,y,up,spread);
+}
+function drawParticles(dt){
+  const W=cv.width,H=cv.height, SKY_TOP=H*0.06; // 上空フェード開始
+  ctx.globalCompositeOperation='lighter';
+  for(let i=PTC.length-1;i>=0;i--){
+    const p=PTC[i];
+    p.ttl-=dt;
+    if(p.ttl<=0){ PTC.splice(i,1); continue; }
+    // 動き
+    p.vx+= (Math.random()-0.5)*0.002*DPR;   // ほんの少し揺らぎ
+    p.vy+= p.ay*dt*60;
+    p.x += p.vx;
+    p.y += p.vy;
+
+    // フェード（時間＋上空ブレンド）
+    let a=Math.max(0,Math.min(1,p.ttl/1.6))*0.9;
+    if(p.y < SKY_TOP){ a *= Math.max(0, (p.y / SKY_TOP)); }
+    // きらめき
+    a *= 0.75 + 0.25*(0.5+0.5*Math.sin(p.tw += dt*9));
+    if(a<=0.01){ PTC.splice(i,1); continue; }
+
+    ctx.globalAlpha=a;
+
+    if(p.type==='glow'){
+      // グロー（白→lighterで青寄り）
+      ctx.drawImage(p.spr, p.x-p.spr.width/2, p.y-p.spr.height/2);
+    }else{
+      // 小さな点（青っぽい）
+      const s=p.s*DPR;
+      ctx.fillStyle=hsl(starHue,90,88,0.95);
+      ctx.fillRect(p.x-s/2, p.y-s/2, s, s);
+    }
+  }
+  ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+}
+
+/* ================= Audio（ピッチ→七色） ================= */
+let audioCtx, analyser, mediaElSource=null, micSource=null, destNode;
+let isPlaying=false, sourceType='none';
+let lvlPrev=0, lvlSmooth=0, lastTS=performance.now();
+
+const DEG=[0,2,4,5,7,9,11];
+const DEG_HUE=[0,25,55,120,190,225,275];
+function nearestDegreeHue(freq){
+  if(!freq||!isFinite(freq)||freq<=0) return starHueTarget;
+  const midi=69+12*Math.log2(freq/440);
+  const sem=((Math.round(midi)%12)+12)%12;
+  let k=0,best=99;
+  for(let i=0;i<DEG.length;i++){
+    const d=Math.min((sem-DEG[i]+12)%12,(DEG[i]-sem+12)%12);
+    if(d<best){best=d;k=i;}
+  }
+  return DEG_HUE[k];
+}
+function ensureAudio(){
+  if(audioCtx) return;
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  analyser=audioCtx.createAnalyser(); analyser.fftSize=2048; analyser.smoothingTimeConstant=0.8;
+  destNode=audioCtx.createMediaStreamDestination();
+}
+function disconnectSources(){ try{mediaElSource&&mediaElSource.disconnect();}catch{} try{micSource&&micSource.disconnect();}catch{} }
+function connectPlayer(){
+  ensureAudio();
+  if(!mediaElSource) mediaElSource=audioCtx.createMediaElementSource(player);
+  disconnectSources(); mediaElSource.connect(analyser); mediaElSource.connect(audioCtx.destination); mediaElSource.connect(destNode);
+  sourceType='media'; playBtn.disabled=false; recBtn.disabled=false; syncBtn();
+}
+function connectMicStream(stream){
+  ensureAudio();
+  if(micSource){ try{micSource.disconnect();}catch{} }
+  micSource=audioCtx.createMediaStreamSource(stream);
+  disconnectSources(); micSource.connect(analyser); micSource.connect(destNode);
+  sourceType='mic'; playBtn.disabled=false; recBtn.disabled=false; syncBtn();
+}
+function sampleAudio(){
+  if(!analyser) return {level:0, mid:0, decay:false, domHz:0};
+  const N=analyser.frequencyBinCount;
+  const freq=new Uint8Array(N), time=new Uint8Array(analyser.fftSize);
+  analyser.getByteFrequencyData(freq); analyser.getByteTimeDomainData(time);
+
+  let sum=0; for(let i=0;i<time.length;i++){ const v=(time[i]-128)/128; sum+=v*v; }
+  const rms=Math.sqrt(sum/time.length);
+  const level=rms*parseFloat(sens.value);
+
+  const alphaUp=0.28, alphaDown=0.08;
+  lvlSmooth += (level - lvlSmooth) * (level>lvlSmooth?alphaUp:alphaDown);
+  const decay=(lvlSmooth - lvlPrev)<-0.002; lvlPrev=lvlSmooth;
+
+  const sr=(audioCtx?.sampleRate||44100), hzPerBin=sr/analyser.fftSize;
+  const s=Math.max(0,Math.floor(100/hzPerBin)), e=Math.min(N-1,Math.ceil(3000/hzPerBin));
+  let acc=0,c=0,maxV=0,maxI=s;
+  for(let i=s;i<=e;i++){ const v=freq[i]; acc+=v; c++; if(v>maxV){maxV=v; maxI=i;} }
+  const mid=(acc/(c||1))/255, domHz=maxI*hzPerBin;
+
+  starHueTarget = nearestDegreeHue(domHz);
+  return {level:lvlSmooth, mid, decay, domHz};
+}
+
+/* ================= UI ================= */
+fileInp.addEventListener('change', ()=>{
+  const f=fileInp.files&&fileInp.files[0]; if(!f) return;
+  ensureAudio(); try{player.pause();}catch{}
+  isPlaying=false; syncBtn();
+  if(player.src) URL.revokeObjectURL(player.src);
+  player.src=URL.createObjectURL(f); player.loop=true;
+  connectPlayer(); stat.textContent='file loaded';
+});
+micBtn.addEventListener('click', async ()=>{
+  try{ ensureAudio(); const stream=await navigator.mediaDevices.getUserMedia({audio:true}); connectMicStream(stream); stat.textContent='mic ready'; }
+  catch(e){ alert('マイクの権限が必要です: '+e); }
+});
+playBtn.addEventListener('click', async ()=>{
+  ensureAudio(); await audioCtx.resume();
+  if(sourceType==='media'){
+    if(!player.src){ stat.textContent='no file'; return; }
+    if(isPlaying){ player.pause(); } else { try{await player.play();}catch{} }
+  }else if(sourceType==='mic'){
+    isPlaying=!isPlaying; syncBtn(); stat.textContent=isPlaying?'listening':'paused (mic)';
+  }else{
+    stat.textContent='no source';
+  }
+});
+player.addEventListener('play', ()=>{isPlaying=true; syncBtn(); stat.textContent='playing';});
+player.addEventListener('pause',()=>{isPlaying=false; syncBtn(); stat.textContent='paused';});
+player.addEventListener('ended',()=>{isPlaying=false; syncBtn(); stat.textContent='ended';});
+player.addEventListener('loadeddata',()=>{isPlaying=false; syncBtn();});
+function syncBtn(){ playBtn.textContent=isPlaying?'停止':'再生'; }
+
+/* 録画 */
+let recorder=null, chunks=[], mixStream;
+const recMime=(window.MediaRecorder && MediaRecorder.isTypeSupported && (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')||MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')))
+  ? (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')?'video/webm;codecs=vp9,opus':'video/webm;codecs=vp8,opus')
+  : 'video/webm';
+recBtn.addEventListener('click', ()=>{
+  if(!recorder){
+    const canvasStream=cv.captureStream(60);
+    mixStream=new MediaStream(canvasStream.getVideoTracks());
+    const at=destNode && destNode.stream.getAudioTracks && destNode.stream.getAudioTracks()[0];
+    if(at) mixStream.addTrack(at);
+    recorder=new MediaRecorder(mixStream,{mimeType:recMime});
+    chunks.length=0;
+    recorder.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
+    recorder.onstop=()=>{ const blob=new Blob(chunks,{type:'video/webm'}); const url=URL.createObjectURL(blob); dlLink.href=url; dlRow.style.display='flex'; recBtn.textContent='録画開始'; recStat.textContent='saved'; recorder=null; };
+    recorder.start(); recBtn.textContent='録画停止'; recStat.textContent='recording…';
+  }else recorder.stop();
+});
+
+/* ================= Background & Stars ================= */
+function drawBackground(t){
+  const W=cv.width,H=cv.height;
+  if(!W||!H){ fit(); return; }
+
+  // 背景グラデ
+  const g=ctx.createLinearGradient(0,H,0,0);
+  g.addColorStop(0, COL.grad0);
+  g.addColorStop(0.5, COL.grad1);
+  g.addColorStop(1, COL.grad2);
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+
+  // ドレミ色へゆっくり
+  starHue += (starHueTarget - starHue)*0.08;
+
+  // 小粒の星
+  for(const s of STARS_SMALL){
+    const xr=s.x*W, yr=s.y*H;
+    const tw=0.55 + 0.45*(0.5+0.5*Math.sin(t*1.8 + s.p)) + 0.15*(0.5+0.5*Math.sin(t*5.1 + s.p*1.7));
+    ctx.globalAlpha = Math.min(1, tw) * fadeByY(yr, H);
+    ctx.fillStyle = hsl(starHue, 90, 85);
+    ctx.fillRect(xr, yr, s.s*DPR, s.s*DPR);
+  }
+  // 大粒の星
+  ctx.globalAlpha=1;
+  for(const s of STARS_BIG){
+    const xr=s.x*W, yr=s.y*H;
+    const a=0.6 + 0.4*(0.5+0.5*Math.sin(t*1.2 + s.p));
+    const r=s.s*DPR;
+    ctx.save(); ctx.translate(xr,yr); ctx.globalAlpha=a*fadeByY(yr,H);
+    ctx.fillStyle=hsl(starHue, 90, 88);
+    ctx.shadowColor=hsl(starHue, 100, 90); ctx.shadowBlur=r*0.9;
+    ctx.beginPath();
+    for(let i=0;i<5;i++){ const A=i*(Math.PI*2/5)-Math.PI/2; ctx.lineTo(Math.cos(A)*r,Math.sin(A)*r); const B=A+Math.PI/5; ctx.lineTo(Math.cos(B)*r*0.45,Math.sin(B)*r*0.45); }
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.globalAlpha=1;
+}
+
+/* ================= Flowers & Emit ================= */
+function drawFlowerAt(p,z,alpha){
+  const fx=flowerPx(z)*DPR, st=stemPx(z)*DPR, lf=leafLen(z)*DPR;
+  ctx.globalAlpha=alpha;
+
+  // stem
+  const ss=st/SPR.stem.height;
+  ctx.drawImage(SPR.stem, p.x-(SPR.stem.width*ss)/2, p.y-st, SPR.stem.width*ss, st);
+
+  // leaves
+  const ls=lf/SPR.leaf.height;
+  const rootY=p.y-Math.min(st*0.06,8*DPR);
+  const theta=0.85;
+  ctx.save(); ctx.translate(p.x,rootY); ctx.rotate(-theta);
+  ctx.drawImage(SPR.leaf,-SPR.leaf.width*0.5*ls,-SPR.leaf.height*ls,SPR.leaf.width*ls,SPR.leaf.height*ls);
+  ctx.restore();
+  ctx.save(); ctx.translate(p.x,rootY); ctx.rotate(+theta);
+  ctx.drawImage(SPR.leaf,-SPR.leaf.width*0.5*ls,-SPR.leaf.height*ls,SPR.leaf.width*ls,SPR.leaf.height*ls);
+  ctx.restore();
+
+  // flower（青輪郭）
+  const fs=fx/SPR.flower.width;
+  ctx.save(); ctx.shadowColor=COL.outline; ctx.shadowBlur=6*DPR;
+  ctx.drawImage(SPR.flower, p.x-SPR.flower.width*0.5*fs, (p.y-st)-SPR.flower.height*0.5*fs, SPR.flower.width*fs, SPR.flower.height*fs);
+  ctx.restore();
+
+  ctx.globalAlpha=1;
+}
+
+/* 連続エミット（強化） */
+const CONT_EMIT_BASE = 0.6;   // /sec per flower（無音）
+const CONT_EMIT_GAIN = 22.0;  // /sec per flower（level=1で加算・強め）
+function updateFlowers(dt,t,A){
+  for(const f of FIELD){
+    if(f.phase==='off') continue;
+    f.t+=dt;
+
+    const p=proj(f.x01,f.z01,f.dy);
+    const headY = p.y - stemPx(f.z01)*DPR - flowerPx(f.z01)*0.20*DPR;
+
+    if(f.phase==='appear'){
+      const k=Math.min(1,f.t/0.4); f.alpha=0.12+0.88*k;
+      if(k>=1){ f.phase='on'; f.t=0; }
+    }else if(f.phase==='on'){
+      f.alpha=0.95;
+
+      // —— 常時ラメ（音量×距離で増える・強化版）——
+      let rate = (CONT_EMIT_BASE + CONT_EMIT_GAIN*Math.pow(A.level,0.85)) * (0.55 + 0.85*f.z01); // /sec
+      f.emitAcc += rate*dt;
+      while(f.emitAcc>=1){
+        addParticle(
+          p.x, headY,
+          0.62 + f.z01*0.16,                // 初速
+          flowerPx(f.z01)*0.18*DPR          // ばらけ
+        );
+        f.emitAcc-=1;
+        if(emitBudget<=0) break;
+      }
+
+      // 寿命 or 減衰で消す
+      if(f.t>f.life || (A.decay && f.t>0.12 && Math.random()<(0.35+A.level*0.45))){
+        f.phase='vanish'; f.t=0; f.sparked=false;
+      }
+    }else if(f.phase==='vanish'){
+      if(!f.sparked){
+        const burst = Math.min( 10 + ((f.z01*12)|0) + Math.floor(24*A.level), emitBudget );
+        for(let k=0;k<burst;k++){
+          addParticle(
+            p.x, headY,
+            0.70 + f.z01*0.18,
+            flowerPx(f.z01)*0.25*DPR
+          );
+        }
+        f.sparked=true;
+      }
+      const k=Math.min(1,f.t/0.55); f.alpha=0.95*(1-k);
+      if(k>=1){ f.phase='off'; f.t=0; f.emitAcc=0; }
+    }
+
+    // 描画
+    drawFlowerAt(p,f.z01,f.alpha);
+  }
+}
+
+/* ================= Spawn ================= */
+function occupied(){ const a=[]; for(const f of FIELD) if(f.phase!=='off'){ const p=proj(f.x01,f.z01,f.dy); a.push({x:p.x,y:p.y,z:f.z01}); } return a; }
+function pickSpawnSlots(n){
+  const ons=occupied(), idxs=[], off=[];
+  for(let i=0;i<FIELD.length;i++) if(FIELD[i].phase==='off') off.push(i);
+  const tries=Math.min(300, off.length*3);
+  for(let t=0;t<tries && idxs.length<n; t++){
+    const i=off[(Math.random()*off.length)|0]; if(i==null) break;
+    const f=FIELD[i]; const p=proj(f.x01,f.z01,f.dy);
+    const minSep=(16 + f.z01*24)*DPR; let ok=true;
+    for(const o of ons){ const dx=p.x-o.x, dy=p.y-o.y; if(dx*dx+dy*dy<minSep*minSep){ ok=false; break; } }
+    if(ok){
+      for(const j of idxs){ const q=proj(FIELD[j].x01,FIELD[j].z01,FIELD[j].dy); const dx=p.x-q.x, dy=p.y-q.y; if(dx*dx+dy*dy<minSep*minSep){ ok=false; break; } }
+      if(ok) idxs.push(i);
+    }
+  }
+  return idxs;
+}
+function spawnLogic(A){
+  if(!isPlaying) return;
+  const target=Math.floor(14 + A.mid*100);
+  const alive=FIELD.reduce((n,f)=>n+(f.phase!=='off'),0);
+  const need=Math.max(0,target-alive);
+  for(const i of pickSpawnSlots(Math.min(need,15))){
+    const f=FIELD[i]; f.phase='appear'; f.t=0; f.life=1.6+Math.random()*2.0; f.alpha=0; f.sparked=false; f.emitAcc=0;
+  }
+}
+
+/* ================= Loop ================= */
+function loop(){
+  const now=performance.now(); const dt=Math.min(0.033,(now-lastTS)/1000); lastTS=now;
+  const A=sampleAudio();
+  beginFrame();                // 粒子予算リセット
+  drawBackground(now*0.001);
+  spawnLogic(A);
+  updateFlowers(dt, now*0.001, A);
+  drawParticles(dt);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ================= iOS unlock ================= */
+addEventListener('touchend', ()=>audioCtx && audioCtx.resume(), {once:true});
+addEventListener('click', ()=>audioCtx && audioCtx.resume(), {once:true});
+</script>
+</body>
+</html>
