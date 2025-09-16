@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Cyber Noise Visualizer — Glitch / Leaf / ■△ (Audio-Reactive)</title>
+<style>
+  :root{color-scheme:dark; --glass:rgba(255,255,255,.08); --line:rgba(255,255,255,.16)}
+  html,body{margin:0;height:100%;background:#000;color:#e5f0ff;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Noto Sans JP",sans-serif}
+  canvas{position:fixed !important; inset:0 !important; z-index:0 !important; display:block; width:100vw; height:100vh;}
+  /* UI */
+  #ui{position:fixed; left:14px; top:14px; z-index:10; display:flex; gap:8px; align-items:center; flex-wrap:wrap; backdrop-filter: blur(6px); background:var(--glass); border:1px solid var(--line); padding:8px 10px; border-radius:12px}
+  #ui button, #ui label, #ui select, #ui input[type=range]{appearance:none; border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.08); color:#e5f0ff; padding:6px 10px; border-radius:10px; cursor:pointer; font-size:12px}
+  #ui input[type=range]{width:140px}
+  #ui .active{outline:1px solid rgba(255,255,255,.6)}
+  #file{position:absolute; width:.1px; height:.1px; opacity:0; overflow:hidden; z-index:-1}
+  #legend{position:fixed; right:14px; top:14px; z-index:5; font-size:12px; line-height:1.45; color:#cfe3ff; opacity:.95; background:rgba(8,8,10,.35); border:1px solid rgba(255,255,255,.10); padding:10px 12px; border-radius:10px; max-width:46ch}
+  @media (max-width:720px){ #legend{display:none;} }
+
+  /* ▼ UI隠し（Hキー/ボタンで切替） */
+  body[data-ui="off"] #ui, body[data-ui="off"] #legend{ display:none !important; }
+  body[data-ui="off"]{ cursor:none; }
+
+  /* ▼ 録画中だけDOMマスコットを“ほぼ透明”にする（display:noneは使わない） */
+  #mascot.ghost { opacity:0.001 !important; }
+</style>
+</head>
+<body data-ui="on">
+<canvas id="cv"></canvas>
+<audio id="player" preload="auto" crossorigin="anonymous" playsinline style="position:fixed;left:-9999px;top:-9999px"></audio>
+
+<!-- マスコット（3/4中央、DOMで常時表示） -->
+<img id="mascot" src="fox_run_anim.gif" alt="overlay gif"
+     style="position:fixed; left:50%; top:75%; transform:translate(-50%,-50%);
+            width:180px; z-index:9; pointer-events:none; image-rendering: pixelated; opacity:.95;"/>
+
+<div id="ui">
+  <label for="file">📄 音声</label><input id="file" type="file" accept="audio/*"/>
+  <button id="mic">🎤 マイク</button>
+  <button id="play">▶ 再生</button>
+  <button id="pause">⏸ 停止</button>
+  <button id="record">⏺ 録画</button>
+  <select id="mode" title="ノイズ種">
+    <option value="glitch" selected>グリッチ</option>
+    <option value="leaf">葉っぱノイズ</option>
+    <option value="shapes">■/△ ノイズ</option>
+  </select>
+  <label>密度</label><input id="density" type="range" min="0.6" max="1.8" step="0.01" value="1.00"/>
+  <label>グリッチ度</label><input id="glitch" type="range" min="0" max="1" step="0.01" value="0.35"/>
+  <select id="sense" title="感度">
+    <option value="low">鈍感</option>
+    <option value="normal" selected>ふつう</option>
+    <option value="high">敏感</option>
+    <option value="ultra">超敏感(スマホ)</option>
+  </select>
+  <button id="toggleUi" title="UIを隠す/表示 (H)">👻 UI隠す</button>
+  <span id="status" style="margin-left:8px; font-size:12px; opacity:.9;">準備中</span>
+</div>
+
+<div id="legend">
+  <b>Cyber Noise</b>
+  <div>🎧 色：<b>スペクトル重心(音色)</b>→HSL色相／明るさ＝音量</div>
+  <div>🧭 役割：
+    <ul style="margin:.2em 0 .2em 1em; padding:0">
+      <li>低域(20–150Hz)：ブロックの大振れ・縦割れ</li>
+      <li>中域(300–3000Hz)：粒子/葉/■△の密度</li>
+      <li>高域(6–16kHz)：スキャンライン/閃光</li>
+    </ul>
+  </div>
+  <div>⏺ 録画：キャンバス + 入力音声 をWebM/MP4で保存</div>
+</div>
+
+<script>
+/* ===== Canvas ===== */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let DPR = Math.min(2, window.devicePixelRatio||1);
+function resize(){
+  DPR = Math.min(2, window.devicePixelRatio||1);
+  const w = innerWidth || document.documentElement.clientWidth;
+  const h = innerHeight || document.documentElement.clientHeight;
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  cv.width = Math.floor(w * DPR); cv.height = Math.floor(h * DPR);
+}
+addEventListener('resize', resize); resize();
+
+/* ===== UI ===== */
+const $ = id => document.getElementById(id);
+const statusEl = $('status');
+$('density').addEventListener('input', e=>{ density = parseFloat(e.target.value); });
+$('glitch').addEventListener('input', e=>{ glitchAmt = parseFloat(e.target.value); });
+$('mode').addEventListener('change', e=>{ mode = e.target.value; });
+
+/* ▼ UI表示/非表示（ボタン & Hキー） */
+const toggleUiBtn = $('toggleUi');
+const getUiHidden = () => document.body.dataset.ui === 'off';
+function setUiHidden(hidden){
+  document.body.dataset.ui = hidden ? 'off' : 'on';
+  toggleUiBtn.textContent = hidden ? '👻 UI表示' : '👻 UI隠す';
+  localStorage.setItem('uiHidden', hidden ? '1' : '0');
+}
+toggleUiBtn.addEventListener('click', ()=> setUiHidden(!getUiHidden()));
+addEventListener('keydown', e=>{ if (e.key.toLowerCase() === 'h') setUiHidden(!getUiHidden()); });
+setUiHidden(localStorage.getItem('uiHidden') === '1');
+
+/* ===== Audio ===== */
+let audioCtx, analyser, freqData, timeData;
+let mediaEl = $('player'), mediaElSrc=null, micStream=null, micSource=null;
+let usingMic=false, fileLoaded=false, pendingPlay=false;
+let destNode=null, mediaRec=null, chunks=[], recMime='video/webm', recExt='webm';
+
+const sense = { ampScale:1.0, gate:0.008, donDelta:0.08, smooth:0.08 };
+function applySense(mode){
+  if (mode==='low'){ sense.ampScale=0.85; sense.gate=0.012; sense.donDelta=0.11; sense.smooth=0.12; }
+  else if (mode==='high'){ sense.ampScale=1.2; sense.gate=0.005; sense.donDelta=0.06; sense.smooth=0.06; }
+  else if (mode==='ultra'){ sense.ampScale=2.0; sense.gate=0.0025; sense.donDelta=0.035; sense.smooth=0.03; }
+  else { sense.ampScale=1.0; sense.gate=0.008; sense.donDelta=0.08; sense.smooth=0.08; }
+  statusEl.textContent = '感度: '+mode;
+}
+$('sense').addEventListener('change', e=>applySense(e.target.value));
+applySense('normal');
+
+// 黒画面回避：先に analyser 用意
+ensureAudio().catch(()=>{});
+addEventListener('pointerdown', ()=>ensureAudio(), { once:true });
+addEventListener('keydown',  ()=>ensureAudio(),   { once:true });
+
+async function ensureAudio(){
+  if (!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext; audioCtx = new AC();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.80;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    timeData = new Uint8Array(analyser.fftSize);
+  }
+}
+function connectNode(node, monitor){
+  try{ node.disconnect(); }catch(_){}
+  node.connect(analyser);
+  if (monitor) node.connect(audioCtx.destination);
+}
+
+$('file').addEventListener('change', async (e)=>{
+  const f=e.target.files && e.target.files[0]; if(!f) return;
+  await ensureAudio(); usingMic=false; fileLoaded=false; try{ mediaEl.pause(); }catch(_){}
+  if (!mediaElSrc){ mediaElSrc = audioCtx.createMediaElementSource(mediaEl); }
+  connectNode(mediaElSrc, true);
+  if (mediaEl.src) URL.revokeObjectURL(mediaEl.src);
+  mediaEl.src = URL.createObjectURL(f); mediaEl.loop=true; mediaEl.load();
+  mediaEl.oncanplay = ()=>{ fileLoaded=true; statusEl.textContent='読み込み完了'; if(pendingPlay){ playFile(); pendingPlay=false; } };
+});
+$('mic').addEventListener('click', async ()=>{
+  try{
+    await ensureAudio(); usingMic=true; fileLoaded=false; mediaEl.pause();
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    micStream=stream; micSource=audioCtx.createMediaStreamSource(stream);
+    connectNode(micSource, false); statusEl.textContent='マイク入力中';
+  }catch(e){ alert('マイク権限が必要です: '+e); }
+});
+$('play').addEventListener('click', async ()=>{ await playFile(); });
+$('pause').addEventListener('click', ()=>{ pauseFile(); });
+
+async function playFile(){
+  await ensureAudio(); try{ await audioCtx.resume(); }catch(_){}
+  if (usingMic){ playing = true; statusEl.textContent='listening'; return; }
+  if (!fileLoaded){ pendingPlay=true; statusEl.textContent='読み込み中…→自動再生'; return; }
+  try{ await mediaEl.play(); statusEl.textContent='再生中'; }
+  catch{ statusEl.textContent='再生ブロック：画面をタップ後にもう一度'; }
+}
+function pauseFile(){ try{ if(!usingMic) mediaEl.pause(); playing=false; statusEl.textContent='停止'; }catch(_){} }
+
+/* ===== Mascot mirror control (録画中だけCanvasへ) ===== */
+let drawMascotToCanvas = false;
+function syncMascotMirror(){
+  const m = $('mascot'); if(!m) return;
+  if (drawMascotToCanvas) m.classList.add('ghost'); else m.classList.remove('ghost');
+}
+syncMascotMirror();
+
+/* ===== Recording (canvas + audio) ===== */
+$('record').addEventListener('click', async ()=>{
+  if (!mediaRec){ await startRecording(); $('record').textContent='録画停止'; $('record').classList.add('active'); }
+  else { await stopRecording(); $('record').textContent='録画'; $('record').classList.remove('active'); }
+});
+async function startRecording(){
+  await ensureAudio(); const canvasStream=cv.captureStream(60);
+  if(!destNode){ destNode = audioCtx.createMediaStreamDestination(); }
+  if (usingMic && micSource) micSource.connect(destNode);
+  if (!usingMic && mediaElSrc) mediaElSrc.connect(destNode);
+
+  const mimes=['video/mp4;codecs=h264,aac','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  recMime = mimes.find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+  recExt  = recMime.includes('mp4') ? 'mp4' : 'webm';
+
+  // ★ 録画中だけCanvasにもマスコットを描画、DOM側はほぼ透明化
+  drawMascotToCanvas = true; syncMascotMirror();
+
+  const mix = new MediaStream([ ...canvasStream.getVideoTracks(), ...destNode.stream.getAudioTracks() ]);
+  mediaRec = new MediaRecorder(mix, { mimeType:recMime }); chunks=[];
+  mediaRec.ondataavailable = e=>{ if(e.data.size>0) chunks.push(e.data); };
+  mediaRec.onstop = ()=>{
+    const blob=new Blob(chunks,{type:recMime}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=`cyber-noise.${recExt}`; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 1200);
+    mediaRec=null;
+    // ★ 録画終了で元に戻す
+    drawMascotToCanvas = false; syncMascotMirror();
+  };
+  mediaRec.start();
+}
+async function stopRecording(){ if(mediaRec && mediaRec.state!=='inactive') mediaRec.stop(); }
+
+/* ===== Analysis helpers ===== */
+function rmsLevel(){ analyser.getByteTimeDomainData(timeData); let s=0; for(let i=0;i<timeData.length;i++){ const v=(timeData[i]-128)/128; s+=v*v; } return Math.sqrt(s/timeData.length); }
+function bandEnergy(hz0,hz1){
+  const nyq=audioCtx.sampleRate/2; const binHz=nyq/freqData.length;
+  let i0=Math.max(0,Math.floor(hz0/binHz)), i1=Math.min(freqData.length-1,Math.ceil(hz1/binHz));
+  if(i1<=i0) return 0; let sum=0; for(let i=i0;i<=i1;i++) sum+=freqData[i]; return sum/(i1-i0+1);
+}
+function spectralCentroid(){
+  const nyq=audioCtx.sampleRate/2; const binHz=nyq/freqData.length; let num=0, den=0;
+  for(let i=0;i<freqData.length;i++){ const a=freqData[i]; num += a * (i*binHz); den += a; }
+  return (den>0? num/den : 0);
+}
+function hsl(h,s,l,a=1){ return `hsla(${h|0},${(s*100)|0}%,${(l*100)|0}%,${a})`; }
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+
+/* ===== Visual state ===== */
+let playing=false, lastActive=0, silence=0;
+let levelS=0, bassS=0, midS=0, highS=0, hue=200;
+let mode='glitch', density=1.0, glitchAmt=0.35;
+
+/* 描画エリア：上2/3 */
+const ACTIVE_AREA_RATIO = 3/3;
+const activeAreaH = () => (cv.height / DPR) * ACTIVE_AREA_RATIO;
+
+/* Pools */
+const GlitchStrips=[], Bits=[], Leaves=[];
+
+class GlitchStrip{
+  constructor(y,h,dx,life,alpha){ this.y=y; this.h=h; this.dx=dx; this.life=life; this.alpha=alpha; this.t=0; }
+  update(dt){ this.t+=dt; }
+  draw(){
+    const k=clamp(this.t/this.life,0,1), off=this.dx*(1-k);
+    ctx.save();
+    ctx.globalAlpha=this.alpha*(1-k);
+    ctx.fillStyle=hsl(hue,0.9,0.55,0.8);
+    ctx.fillRect(0, (this.y+off)*DPR, cv.width, this.h*DPR);
+    ctx.globalAlpha=0.18*(1-k);
+    ctx.fillStyle=hsl(hue,0.95,0.7,1);
+    for(let y=0; y<this.h*DPR; y+=3){ ctx.fillRect(0, (this.y*DPR)+y, cv.width, 1); }
+    ctx.restore();
+  }
+}
+class Bit{
+  constructor(x,y,shape,size,rot,life){ this.x=x; this.y=y; this.shape=shape; this.size=size; this.rot=rot; this.life=life; this.t=0; }
+  update(dt){ this.t+=dt; }
+  draw(){
+    const k=clamp(this.t/this.life,0,1), a=(1-k)*0.9*clamp(levelS*2,0,1);
+    ctx.save(); ctx.translate(this.x*DPR,this.y*DPR); ctx.rotate(this.rot);
+    ctx.fillStyle=hsl(hue,0.9,0.6,a); ctx.strokeStyle=hsl(hue,0.9,0.85,a*0.8); ctx.lineWidth=Math.max(1,1.2*DPR);
+    const s=this.size*DPR;
+    if(this.shape==='sq'){ ctx.fillRect(-s/2,-s/2,s,s); ctx.strokeRect(-s/2,-s/2,s,s); }
+    else { ctx.beginPath(); const r=s*0.58; ctx.moveTo(0,-r); ctx.lineTo(r,r); ctx.lineTo(-r,r); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    ctx.restore();
+  }
+}
+class Leaf{
+  constructor(x,y,rot,life){ this.x=x; this.y=y; this.rot=rot; this.life=life; this.t=0; }
+  update(dt){ this.t+=dt; }
+  draw(){
+    const k=clamp(this.t/this.life,0,1), a=(1-k)*0.85*clamp(midS/220,0,1);
+    const s=(6+Math.random()*16)*DPR;
+    ctx.save(); ctx.translate(this.x*DPR,this.y*DPR); ctx.rotate(this.rot);
+    ctx.globalAlpha=a; ctx.strokeStyle=hsl(hue,0.9,0.8,a); ctx.fillStyle=hsl(hue,0.85,0.45,a*0.35); ctx.lineWidth=Math.max(1,1.5*DPR);
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.quadraticCurveTo(-s*0.45,-s*0.35,0,-s); ctx.quadraticCurveTo(s*0.45,-s*0.35,0,0); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,-s*0.85); ctx.lineTo(0,-s*0.15); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function spawnGlitch(bass, high){
+  const H = (4 + Math.random()*10) * density;
+  const y = Math.random() * activeAreaH();
+  const dx = (Math.random()<0.5?-1:1) * (2 + bass/8 + Math.random()*12) * glitchAmt;
+  const life = 0.18 + Math.random()*0.35;
+  const a = 0.35 + Math.random()*0.45;
+  GlitchStrips.push(new GlitchStrip(y,H,dx,life,a));
+}
+function spawnBits(n){
+  const step = 10;
+  for(let i=0;i<n;i++){
+    const x = Math.floor((Math.random()*cv.width/DPR)/step)*step + step*0.5;
+    const y = Math.floor((Math.random()*activeAreaH())/step)*step + step*0.5;
+    const shape = Math.random()<0.5 ? 'sq' : 'tri';
+    const size = 4 + Math.random()*10;
+    const rot = (shape==='sq')? 0 : Math.random()*Math.PI*2;
+    const life = 0.25 + Math.random()*0.8;
+    Bits.push(new Bit(x,y,shape,size,rot,life));
+  }
+}
+function spawnLeaves(n){
+  for(let i=0;i<n;i++){
+    const x=Math.random()*cv.width/DPR; const y=Math.random()*activeAreaH();
+    const rot=(Math.random()-0.5)*Math.PI; const life=0.3+Math.random()*0.9;
+    Leaves.push(new Leaf(x,y,rot,life));
+  }
+}
+
+/* ===== Main loop ===== */
+let last=performance.now()/1000;
+function loop(){
+  const now=performance.now()/1000; const dt=Math.min(0.05, now-last); last=now;
+
+  // 背景フェード
+  ctx.fillStyle='rgba(0,0,0,0.28)'; ctx.fillRect(0,0,cv.width,cv.height);
+
+  // ---- audio analysis (idleあり) ----
+  if (analyser){
+    analyser.getByteFrequencyData(freqData);
+    const lvl = rmsLevel()*sense.ampScale;
+    const active = (lvl > sense.gate) || (usingMic || (mediaEl && !mediaEl.paused));
+    if (active) lastActive = now;
+    const silentFor = now-lastActive; silence = silentFor>1.0 ? clamp(silence+dt*2,0,1) : clamp(silence-dt*3,0,1);
+
+    const bass  = bandEnergy(20,150);
+    const mid   = bandEnergy(300,3000);
+    const highB = bandEnergy(6000,16000);
+
+    levelS += (lvl - levelS)*sense.smooth;
+    bassS  += (bass - bassS)*0.25;
+    midS   += (mid  - midS )*0.25;
+    highS  += (highB- highS)*0.25;
+
+    const cen = spectralCentroid(); const hueT = 220 + 100 * clamp((cen-200)/7800, 0, 1);
+    hue += (hueT - hue)*0.25;
+  }else{
+    levelS*=0.98; bassS*=0.98; midS*=0.98; highS*=0.98;
+    hue = (hue + 10*dt) % 360;
+  }
+
+  // ---- spawns ----
+  const deltaLevel = levelS - (loop._prevLvl||0); loop._prevLvl = levelS;
+  if (mode==='glitch'){
+    const spurts = (deltaLevel > sense.donDelta*0.8 && levelS > sense.gate*1.5) ? 1+Math.floor(Math.random()*2) : 0;
+    for(let i=0;i<spurts;i++) spawnGlitch(bassS, highS);
+    if (Math.random() < (0.10 + highS/320) * density) spawnGlitch(bassS, highS);
+    spawnBits(Math.floor(clamp(midS/200,0,1) * 12 * density));
+  } else if (mode==='shapes'){
+    spawnBits(Math.min(24, Math.floor(6 + (midS/180)*50 * density)));
+    if (Math.random() < (0.05 + highS/360)) spawnGlitch(bassS, highS);
+    const nLeaves = Math.floor((midS/220) * 5 * density);
+    if (nLeaves>0) spawnLeaves(nLeaves);
+  } else if (mode==='leaf'){
+    spawnLeaves(Math.min(12, Math.floor(2 + (midS/160)*10 * density)));
+    const nBitsLite = Math.floor((midS/240) * 6 * density);
+    if (nBitsLite>0) spawnBits(nBitsLite);
+    if (Math.random() < (0.04 + highS/400)) spawnGlitch(bassS, highS*0.6);
+  }
+
+  // ---- draw pools ----
+  for (let i=GlitchStrips.length-1; i>=0; i--){ const g=GlitchStrips[i]; g.update(dt); g.draw(); if (g.t>g.life) GlitchStrips.splice(i,1); }
+  for (let i=Bits.length-1; i>=0; i--){ const b=Bits[i]; b.update(dt); b.draw(); if (b.t>b.life) Bits.splice(i,1); }
+  for (let i=Leaves.length-1; i>=0; i--){ const l=Leaves[i]; l.update(dt); l.draw(); if (l.t>l.life) Leaves.splice(i,1); }
+
+  // ▼ 録画中のみCanvasにもマスコットを描画
+  if (drawMascotToCanvas){
+    const m = $('mascot');
+    if (m && m.complete){
+      const baseW=(m.naturalWidth||256)*DPR, baseH=(m.naturalHeight||256)*DPR;
+      const w=Math.min(cv.width*0.22, baseW), h=w*(baseH/baseW);
+      const cx=cv.width*0.5, cy=cv.height*0.75;
+      ctx.drawImage(m, cx - w*0.5, cy - h*0.5, w, h);
+    }
+  }
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ===== tiny helpers ===== */
+(function(){
+  $('play').addEventListener('click', async()=>{ await audioCtx?.resume?.(); playing=true; });
+  addEventListener('touchend', ()=>audioCtx&&audioCtx.resume(), {once:true});
+  addEventListener('click',    ()=>audioCtx&&audioCtx.resume(), {once:true});
+})();
+</script>
+</body>
+</html>
