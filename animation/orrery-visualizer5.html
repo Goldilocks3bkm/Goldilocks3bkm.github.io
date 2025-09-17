@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>ガラクタ宇宙ビジュアライザ（背景流星＋惑星固定色）</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
+<style>
+  :root { color-scheme: dark; --glass: rgba(255,255,255,0.08); --line: rgba(255,255,255,0.16); }
+  html, body { margin:0; padding:0; background:#082f30; color:#eaf6f6; font-family: ui-sans-serif, system-ui, -apple-system, "Noto Sans JP", sans-serif; }
+  canvas { position: fixed !important; inset:0 !important; z-index:0 !important; pointer-events:none !important; }
+  #ui { position: fixed; left: 14px; top: 14px; z-index: 700; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+        background: var(--glass); border:1px solid var(--line); padding: 8px 10px; border-radius: 12px; backdrop-filter: blur(6px);}
+  #ui button, #ui label, #ui select, #ui input[type=range] { appearance:none; border:1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08); color:#eaf6f6; padding:6px 10px; border-radius:10px; cursor:pointer; font-size:12px; }
+  #ui input[type=range]{ width:140px; } #file{ position:absolute; width:.1px; height:.1px; opacity:0; overflow:hidden; z-index:-1;}
+  #legend { position: fixed; right:16px; top:16px; z-index:600; font-size:12px; line-height:1.45; color:#d8f0ff; opacity:.95;
+            background: rgba(0,20,22,.35); border:1px solid rgba(255,255,255,.08); padding:10px 12px; border-radius:10px; max-width:46ch; }
+  @media (max-width:720px){ #legend{display:none;} }
+  audio#player{position:fixed;left:-9999px;top:-9999px}
+</style>
+</head>
+<body>
+  <div id="ui">
+    <label for="file">📄 音声</label><input id="file" type="file" accept="audio/mpeg,audio/wav,audio/*"/>
+    <button id="mic">🎤 マイク</button>
+    <button id="play">▶ 再生</button>
+    <button id="pause">⏸ 停止</button>
+    <button id="record">⏺ 録画</button>
+    <label>密度</label><input id="zoom" type="range" min="0.7" max="1.8" step="0.01" value="1.00"/>
+    <label>帯幅</label><input id="spread" type="range" min="0" max="1" step="0.01" value="0.50"/>
+    <select id="sense" title="感度">
+      <option value="low">鈍感</option><option value="normal" selected>ふつう</option>
+      <option value="high">敏感</option><option value="ultra">超敏感(スマホ)</option>
+    </select>
+    <span id="status" style="margin-left:8px; font-size:12px; opacity:.9;">準備中（停止）</span>
+  </div>
+
+  <div id="legend">
+    <b>ガラクタ宇宙</b>
+    <div>🌌 右上→左下の帯（天の川）＋帯幅スライダー<strong>常時</strong>有効</div>
+    <div>✨ 背景星：画面全体（数2倍／サイズMAX1.5倍）</div>
+    <div>🪐 惑星：固定色（音色で変化しない）</div>
+    <div>☄️ 流星：天の川の<strong>左側だけ</strong>の背景に降る</div>
+  </div>
+
+  <audio id="player" preload="auto" playsinline></audio>
+
+<script>
+/* ===== 定数/色 ===== */
+const TAU = Math.PI * 2;
+const COLORS7 = [
+  [255,80,80],[255,150,60],[255,220,80],[100,220,120],[90,170,255],[160,120,255],[255,130,200]
+];
+
+/* ===== フェイルセーフ：2Dコンテキストを安定取得 ===== */
+let CTX=null;
+function getCtx(){
+  if (CTX) return CTX;
+  if (typeof drawingContext !== 'undefined' && drawingContext) CTX = drawingContext;
+  return CTX;
+}
+
+/* 色調整 */
+let BG_SAT = 1.15, BG_GAMMA = 0.90, BG_BASE_ALPHA = 0.22;
+let BAND_SAT = 1.10, BAND_GAMMA = 0.92, BAND_BASE_ALPHA = 0.26;
+
+function tuneRGB([r,g,b], sat, gamma){
+  const mx=Math.max(r,g,b), mn=Math.min(r,g,b), v=mx/255, d=mx-mn;
+  let s = mx===0?0:d/mx; s=Math.min(1, Math.max(0, s*sat));
+  const V=Math.pow(v, gamma);
+  let h=0; if(d!==0){ if(mx===r) h=((g-b)/d)%6; else if(mx===g) h=(b-r)/d+2; else h=(r-g)/d+4; h=(h*60+360)%360; }
+  const C=V*s, X=C*(1-Math.abs(((h/60)%2)-1)), m=V-C;
+  let rr=0,gg=0,bb=0;
+  if(h<60){ rr=C; gg=X; } else if(h<120){ rr=X; gg=C; }
+  else if(h<180){ gg=C; bb=X; } else if(h<240){ gg=X; bb=C; }
+  else if(h<300){ rr=X; bb=C; } else { rr=C; bb=X; }
+  return [ Math.round((rr+m)*255), Math.round((gg+m)*255), Math.round((bb+m)*255) ];
+}
+
+/* ===== WebAudio ===== */
+let audioCtx, analyser, freqData, timeData;
+let mediaEl=null, mediaElSrc=null, micSource=null, micStream=null;
+let usingMic=false, fileLoaded=false, pendingPlay=false;
+let destNode=null, mediaRec=null, chunks=[], recMime='video/webm', recExt='webm';
+const htmlPlayer = document.getElementById('player');
+
+const sense = { ampScale:1.0, gate:0.008, donDelta:0.08 };
+function applySense(mode){
+  if (mode==='low'){ sense.ampScale=0.85; sense.gate=0.012; sense.donDelta=0.11; }
+  else if (mode==='high'){ sense.ampScale=1.2; sense.gate=0.005; sense.donDelta=0.06; }
+  else if (mode==='ultra'){ sense.ampScale=2.0; sense.gate=0.0025; sense.donDelta=0.035; }
+  else { sense.ampScale=1.0; sense.gate=0.008; sense.donDelta=0.08; }
+  const s=document.getElementById('status'); if(s) s.textContent='感度: '+mode;
+}
+async function ensureAudio(){
+  if (!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext; audioCtx = new AC();
+    analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.85;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    timeData = new Uint8Array(analyser.fftSize);
+    mediaEl = htmlPlayer;
+  }
+}
+function connectNode(node, monitor){ try{ node.disconnect(); }catch(_){ } node.connect(analyser); if (monitor) node.connect(audioCtx.destination); }
+async function useFile(file){ await ensureAudio(); usingMic=false; fileLoaded=false;
+  if (!mediaElSrc){ mediaElSrc = audioCtx.createMediaElementSource(mediaEl); }
+  connectNode(mediaElSrc, true);
+  if(mediaEl.src) try{ URL.revokeObjectURL(mediaEl.src); }catch(_){}
+  const url = URL.createObjectURL(file); mediaEl.src = url; mediaEl.load();
+  mediaEl.oncanplay = ()=>{ fileLoaded=true; const s=document.getElementById('status'); if(s) s.textContent='読み込み完了（停止中）'; if(pendingPlay){ playFile(); pendingPlay=false; } };
+}
+async function playFile(){
+  await ensureAudio();
+  if (!fileLoaded){ pendingPlay=true; const s=document.getElementById('status'); if(s) s.textContent='読み込み中… → 自動再生'; return; }
+  try{ await audioCtx.resume(); }catch(_){}
+  try{ await mediaEl.play(); const s=document.getElementById('status'); if(s) s.textContent='再生中'; }
+  catch{ const s=document.getElementById('status'); if(s) s.textContent='再生ブロック: 画面をタップ後にもう一度'; }
+}
+async function pauseFile(){ try{ mediaEl && mediaEl.pause(); const s=document.getElementById('status'); if(s) s.textContent='停止'; }catch(_){} }
+async function useMic(){ await ensureAudio(); usingMic=true; fileLoaded=false; try{ mediaEl && mediaEl.pause(); }catch(_){}
+  micStream = await navigator.mediaDevices.getUserMedia({audio:true});
+  micSource = audioCtx.createMediaStreamSource(micStream);
+  connectNode(micSource, false); const s=document.getElementById('status'); if(s) s.textContent='マイク入力中'; }
+async function startRecording(){
+  await ensureAudio();
+  const canvasStream = document.querySelector('canvas').captureStream(60);
+  if(!destNode){ destNode = audioCtx.createMediaStreamDestination(); }
+  if (usingMic && micSource){ micSource.connect(destNode); }
+  if (!usingMic && mediaElSrc){ mediaElSrc.connect(destNode); }
+  const mimes=['video/mp4;codecs=h264,aac','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  recMime = mimes.find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+  recExt  = recMime.includes('mp4') ? 'mp4' : 'webm';
+  const mix = new MediaStream([ ...canvasStream.getVideoTracks(), ...destNode.stream.getAudioTracks() ]);
+  mediaRec = new MediaRecorder(mix, { mimeType: recMime });
+  chunks=[]; mediaRec.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
+  mediaRec.onstop=()=>{ const blob=new Blob(chunks,{type:recMime}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=`garakuta.${recExt}`; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1200); mediaRec=null; };
+  mediaRec.start();
+}
+async function stopRecording(){ if(mediaRec && mediaRec.state!=='inactive') mediaRec.stop(); }
+
+/* ===== 解析 ===== */
+function rmsLevel(){ analyser.getByteTimeDomainData(timeData); let s=0; for(let i=0;i<timeData.length;i++){ const v=(timeData[i]-128)/128; s+=v*v; } return Math.sqrt(s/timeData.length); }
+let lastLevel=0, beatTimes=[];
+function estimateBPM(lvl){
+  const now=millis(); const delta=Math.max(0,lvl-lastLevel); lastLevel=lvl;
+  if (delta>sense.donDelta && lvl>sense.gate*1.5){ beatTimes.push(now); if(beatTimes.length>16) beatTimes.shift(); }
+  if (beatTimes.length<4) return 100;
+  const iv=[]; for(let i=1;i<beatTimes.length;i++) iv.push(beatTimes[i]-beatTimes[i-1]); iv.sort((a,b)=>a-b);
+  let bpm = 60000/(iv[Math.floor(iv.length/2)]||600);
+  while(bpm<60) bpm*=2; while(bpm>220) bpm/=2;
+  return bpm;
+}
+const NOTE7=[0,2,4,5,7,9,11]; let pitchIndex=4;
+function autoCorrelatePitch(){
+  const buf=new Float32Array(timeData.length);
+  for(let i=0;i<timeData.length;i++) buf[i]=(timeData[i]-128)/128;
+  const maxLag=Math.floor(audioCtx.sampleRate/70), minLag=Math.floor(audioCtx.sampleRate/1200);
+  let bestLag=-1,bestCorr=0;
+  for(let lag=minLag;lag<=maxLag;lag++){ let c=0; for(let i=0;i<buf.length-lag;i++) c+=buf[i]*buf[i+lag]; if(c>bestCorr){bestCorr=c;bestLag=lag;} }
+  if(bestLag<0||bestCorr<0.01) return null;
+  return audioCtx.sampleRate/bestLag;
+}
+function updatePitchIndex(){
+  const f0=autoCorrelatePitch(); if(!f0) return;
+  const note=Math.round(69+12*Math.log2(f0/440));
+  const pc=((note%12)+12)%12;
+  let idx=0,best=99;
+  for(let i=0;i<NOTE7.length;i++){ const d=Math.min((pc-NOTE7[i]+12)%12,(NOTE7[i]-pc+12)%12); if(d<best){best=d; idx=i;} }
+  pitchIndex=idx;
+}
+function bandEnergy(hz0, hz1){
+  if(!freqData || !audioCtx) return 0;
+  const nyq=audioCtx.sampleRate/2; const binHz=nyq/freqData.length;
+  const i0=Math.max(0, Math.floor(hz0/binHz));
+  const i1=Math.min(freqData.length-1, Math.ceil(hz1/binHz));
+  let s=0; for(let i=i0;i<=i1;i++) s+=freqData[i];
+  return s/Math.max(1, (i1-i0+1));
+}
+
+/* ===== レイヤ1：背景星 ===== */
+let BGSTAR_DENSITY = 0.00044;
+let BGSTAR_SIZE_SCALE = 1.5;
+
+let bgStars=[];
+function buildBackgroundStars(){
+  bgStars=[];
+  const N = Math.floor(width*height * BGSTAR_DENSITY);
+  for(let i=0;i<N;i++){
+    const x=Math.random()*width, y=Math.random()*height;
+    const bin = Math.floor(Math.random()*1024);
+    const seed=Math.random()*1000;
+    const base = (Math.random()<0.85 ? random(0.9,1.6) : random(1.6,2.8));
+    const size = base * BGSTAR_SIZE_SCALE;
+    bgStars.push({x,y,bin,seed,size});
+  }
+}
+function drawBackgroundStars(midNorm){
+  const ctx=getCtx(); if(!ctx) return;
+  for(const s of bgStars){
+    const idx=(pitchIndex + Math.floor((s.bin%7)))%7;
+    let c = tuneRGB(COLORS7[idx], BG_SAT, BG_GAMMA);
+    const tw = 0.5 + 0.5*(Math.sin(millis()*0.0016 + s.seed)*0.5+0.5);
+    const a = Math.min(1, BG_BASE_ALPHA + (0.55*midNorm + 0.25)*tw);
+    ctx.fillStyle=`rgba(${c[0]},${c[1]},${c[2]},${a})`;
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, TAU); ctx.fill();
+  }
+}
+
+/* ===== レイヤ2：帯（ガラクタ） ===== */
+let BAND_DENSITY_SCALE = 2.0;
+let BAND_SIZE_SCALE = 1.5;
+
+let zoom=1.00;
+let bandItems=[];
+
+const MARGIN=100;
+const DIR={x:-1/Math.SQRT2, y:1/Math.SQRT2};
+const PERP={x: 1/Math.SQRT2, y:1/Math.SQRT2};
+
+const DRIFT_SPEED_BASE=100;
+const DRIFT_VX=DRIFT_SPEED_BASE*DIR.x;
+const DRIFT_VY=DRIFT_SPEED_BASE*DIR.y;
+
+function bandOrigin(){ return { x: width+MARGIN, y: -MARGIN }; }
+
+let spreadCtrl=0.50;
+let bandWidthPx=0;
+
+function bandMinMax(){
+  const perpExtent = (width + height)/Math.SQRT2 + 2*MARGIN;
+  const sMin=Math.min(width,height);
+  return { wmin: sMin*0.02, wmax: perpExtent };
+}
+function spreadToWidth(p){
+  const {wmin,wmax}=bandMinMax();
+  p=Math.max(0,Math.min(1,p));
+  return wmin + (wmax - wmin) * p;
+}
+function randn(){ let u=0,v=0; while(!u)u=Math.random(); while(!v)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+function spawnBandItem(initial=false, bandW=40){
+  const O=bandOrigin(); const L=Math.hypot(width,height)+MARGIN*2;
+  const s=initial? Math.random()*L : Math.random()*120;
+  const normW = (bandW - bandMinMax().wmin)/(bandMinMax().wmax - bandMinMax().wmin);
+  const d = randn()*bandW*0.5*(1-normW) + (Math.random()-0.5)*bandW*normW;
+
+  const baseSize=(2+Math.random()*3) * BAND_SIZE_SCALE;
+  return {
+    ax: O.x + DIR.x*s + PERP.x*d,
+    ay: O.y + DIR.y*s + PERP.y*d,
+    avx: DRIFT_VX, avy: DRIFT_VY,
+    baseSize, type:(Math.random()<0.75)?'star':'gear',
+    spin:Math.random()*TAU, spinSpd:(Math.random()*1.8-0.9),
+    hueShift:Math.floor(Math.random()*7), twSeed:Math.random()*1000,
+    bin:0, _binAssigned:false
+  };
+}
+function buildBand(){
+  bandWidthPx=spreadToWidth(spreadCtrl);
+  bandItems=[];
+  const N=Math.floor((width*height)/1600 * zoom * BAND_DENSITY_SCALE);
+  for(let i=0;i<N;i++) bandItems.push(spawnBandItem(true, bandWidthPx));
+}
+function drawStarShape(ctx, outer, inner){
+  ctx.beginPath();
+  for(let i=0;i<10;i++){
+    const a=i*TAU/10 - Math.PI/2;
+    const r=(i%2===0)? outer:inner;
+    const x=Math.cos(a)*r, y=Math.sin(a)*r;
+    i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+  }
+  ctx.closePath();
+}
+function getBandEnergySmooth(bin){
+  if(!freqData) return 0;
+  const n=freqData.length, k=2; let s=0,cnt=0;
+  for(let i=-k;i<=k;i++){ const j=Math.min(n-1,Math.max(0,bin+i)); s+=freqData[j]; cnt++; }
+  return (s/cnt)/255;
+}
+function drawBand(dt, midNorm, tempoFactor, srcActive){
+  const ctx=getCtx(); if(!ctx) return;
+
+  const targetW=spreadToWidth(spreadCtrl);
+  bandWidthPx = bandWidthPx ? bandWidthPx + (targetW - bandWidthPx)*0.25 : targetW;
+
+  const {wmin,wmax}=bandMinMax();
+  const normW = (bandWidthPx - wmin)/(wmax - wmin);
+
+  const activity = srcActive ? Math.min(1, tempoFactor) : 0;
+  const insideBase = 0.10 + 0.2 * Math.pow(1-normW, 0.1);
+  const kInside = lerp(0.02, insideBase, 0.25 + 0.75*activity);
+  const kOutside = lerp(0.3, 4.5, activity);
+  const halfW = bandWidthPx*0.5;
+
+  const nBins=freqData ? freqData.length : 1024;
+  for(const it of bandItems){
+    if(!it._binAssigned || it.bin>=nBins){
+      it.bin=Math.floor(Math.random()*nBins);
+      it._binAssigned=true;
+    }
+  }
+
+  const O=bandOrigin();
+
+  for(const it of bandItems){
+    it.ax += it.avx * tempoFactor * dt;
+    it.ay += it.avy * tempoFactor * dt;
+
+    const dx=it.ax - O.x, dy=it.ay - O.y;
+    const d = dx*PERP.x + dy*PERP.y;
+    const pull = 1 - Math.exp(-((Math.abs(d) <= halfW) ? kInside : kOutside) * dt);
+    it.ax -= PERP.x * d * pull;
+    it.ay -= PERP.y * d * pull;
+
+    const x=it.ax, y=it.ay;
+
+    const band=getBandEnergySmooth(it.bin);
+    const sizeScale=1 + Math.min(1, band*1.05);
+    const sz=Math.min(it.baseSize*2, it.baseSize*sizeScale);
+    const eqAlpha=BAND_BASE_ALPHA + 1.80*band;
+
+    const tw=0.6 + 0.4*(Math.sin(millis()*0.0018 + it.twSeed)*0.5+0.5);
+    let c = tuneRGB(COLORS7[(pitchIndex + it.hueShift) % 7], BAND_SAT, BAND_GAMMA);
+    const a=(40 + 70*midNorm*tw) * eqAlpha;
+
+    ctx.save(); ctx.translate(x,y);
+    if(it.type==='gear'){
+      it.spin += it.spinSpd * dt;
+      ctx.rotate(it.spin);
+      ctx.strokeStyle=`rgba(${c[0]},${c[1]},${c[2]},${(a+40)/255})`;
+      ctx.fillStyle  =`rgba(${c[0]},${c[1]},${c[2]},${a/255})`;
+      ctx.lineWidth=1;
+      const teeth=8, R1=sz*1.05, R2=sz*0.78;
+      ctx.beginPath();
+      for(let i=0;i<teeth*2;i++){
+        const ang=i*Math.PI/teeth, rr=(i%2===0)?R1:R2;
+        const X=Math.cos(ang)*rr, Y=Math.sin(ang)*rr;
+        i?ctx.lineTo(X,Y):ctx.moveTo(X,Y);
+      }
+      ctx.closePath(); ctx.stroke(); ctx.fill();
+    }else{
+      ctx.fillStyle=`rgba(${c[0]},${c[1]},${c[2]},${(a+10)/255})`;
+      drawStarShape(ctx, sz, sz*0.45); ctx.fill();
+    }
+    ctx.restore();
+
+    if(x < -MARGIN || y > height + MARGIN){
+      const fresh=spawnBandItem(false, bandWidthPx);
+      Object.assign(it, fresh);
+    }
+  }
+}
+
+/* ===== レイヤ3：惑星（固定色＋環は先に描く） ===== */
+const PLANETS = [
+  {id:'mercury', r:10,  col:[190,180,170]},
+  {id:'venus',   r:14,  col:[255,210,130]},
+  {id:'earth',   r:15,  col:[120,170,255]},
+  {id:'mars',    r:13,  col:[240,120,90]},
+  {id:'jupiter', r:28,  col:[240,210,160]},
+  {id:'saturn',  r:26,  col:[230,200,150], ring:true},
+  {id:'uranus',  r:20,  col:[140,220,220]},
+  {id:'neptune', r:20,  col:[120,160,255]},
+  {id:'pluto',   r:9,   col:[220,200,190]}
+];
+let activePlanets=[];
+function planetActive(id){ return activePlanets.some(p=>p.id===id); }
+function spawnPlanet(){
+  if(activePlanets.length>=3) return;
+  const candidates = PLANETS.filter(p=>!planetActive(p.id));
+  if(!candidates.length) return;
+  const base = candidates[Math.floor(Math.random()*candidates.length)];
+
+  const O=bandOrigin();
+  const s = Math.random()*80;
+  const d = randn() * bandWidthPx * 0.18;
+  const ax = O.x + DIR.x*s + PERP.x*d;
+  const ay = O.y + DIR.y*s + PERP.y*d;
+
+  activePlanets.push({
+    id:base.id, ax, ay, avx:DRIFT_VX, avy:DRIFT_VY,
+    rad: base.r * (0.9 + Math.random()*0.3),
+    ring: !!base.ring, col: base.col.slice()
+  });
+}
+let planetTimer=0;
+function drawPlanets(dt, tempoFactor, midNorm){
+  planetTimer += dt;
+  if((usingMic || (mediaEl && !mediaEl.paused)) && planetTimer>1.2){
+    planetTimer=0; if(Math.random()<0.55) spawnPlanet();
+  }
+
+  const ctx=getCtx(); if(!ctx) return;
+  const O=bandOrigin();
+  const {wmin,wmax}=bandMinMax();
+  const normW = (bandWidthPx - wmin)/(wmax - wmin);
+  const kInside = 0.10 + 0.2 * Math.pow(1-normW, 0.1);
+  const kOutside = 3.5;
+  const halfW = bandWidthPx*0.5;
+
+  for(let i=activePlanets.length-1;i>=0;i--){
+    const p=activePlanets[i];
+    p.ax += p.avx * tempoFactor * dt;
+    p.ay += p.avy * tempoFactor * dt;
+
+    const dx=p.ax - O.x, dy=p.ay - O.y;
+    const d = dx*PERP.x + dy*PERP.y;
+    const pull = 1 - Math.exp(-((Math.abs(d)<=halfW)?kInside:kOutside) * dt);
+    p.ax -= PERP.x * d * pull;
+    p.ay -= PERP.y * d * pull;
+
+    const glow = Math.min(1, 0.35 + 0.85*midNorm);
+
+    ctx.save();
+    ctx.translate(p.ax, p.ay);
+
+    // 環（先に描く＝後ろ側）
+    if(p.ring){
+      const ringW = Math.max(2, p.rad * 0.22);
+      const rx = p.rad * 1.8, ry = p.rad * 0.62;
+      const rc = [Math.min(255,p.col[0]+30), Math.min(255,p.col[1]+30), Math.min(255,p.col[2]+30)];
+      ctx.save(); ctx.rotate(-0.6);
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = ringW;
+      ctx.strokeStyle = `rgba(${rc[0]},${rc[1]},${rc[2]},0.95)`;
+      ctx.beginPath(); ctx.ellipse(0,0, rx, ry, 0, 0, TAU); ctx.stroke();
+      ctx.restore();
+    }
+
+    // 本体（後描き）
+    ctx.shadowColor=`rgba(${p.col[0]},${p.col[1]},${p.col[2]},${0.6*glow})`;
+    ctx.shadowBlur=8;
+    ctx.fillStyle=`rgba(${p.col[0]},${p.col[1]},${p.col[2]},0.9)`;
+    ctx.beginPath(); ctx.arc(0,0,p.rad,0,TAU); ctx.fill();
+
+    ctx.restore();
+
+    if(p.ax < -MARGIN || p.ay > height + MARGIN) activePlanets.splice(i,1);
+  }
+}
+
+/* ===== レイヤ4：背景ガラクタ流星（帯の左側だけ） ===== */
+let meteorsBG = [];
+let meteorCooldown = 0;
+
+// 帯への符号付き距離と左側判定
+function signedDistToBand(x, y){
+  const O = bandOrigin();
+  return (x - O.x) * PERP.x + (y - O.y) * PERP.y;
+}
+function leftSideSign(){
+  const O = bandOrigin();
+  const s = (0 - O.x) * PERP.x + (0 - O.y) * PERP.y;
+  return (s >= 0) ? 1 : -1;
+}
+function isLeftOfBandOnly(x, y, margin = 40){
+  const d = signedDistToBand(x, y);
+  const half = bandWidthPx * 0.5 + margin;
+  return Math.sign(d) === leftSideSign() && Math.abs(d) > half;
+}
+
+// 出現は「帯の左側のみ」→ 左下へシュッ
+function spawnMeteorBG(){
+  const life  = 0.42 + Math.random()*0.26;
+  const speed = 900   + Math.random()*500;
+
+  let x, y, tries = 0;
+  do{
+    x = -80 + Math.random() * (width * 0.60);
+    y = -60 + Math.random() * (height * 0.70);
+    tries++;
+  }while(tries < 20 && !isLeftOfBandOnly(x, y, 40));
+
+  const base = Math.atan2(DIR.y, DIR.x);
+  const ang  = base + random(-0.20, 0.20);
+  const vx   = Math.cos(ang) * speed;
+  const vy   = Math.sin(ang) * speed;
+
+  meteorsBG.push({
+    ax:x, ay:y, vx, vy,
+    type:(Math.random()<0.7)?'star':'gear',
+    spin:random(TAU), spinSpd:random(-2.2,2.2),
+    size:(2.2+Math.random()*3.5)*BAND_SIZE_SCALE,
+    hue:Math.floor(Math.random()*7),
+    life, age:0
+  });
+}
+function updateDrawMeteorsBG(dt, midNorm){
+  const ctx=getCtx(); if(!ctx) return;
+  for(let i=meteorsBG.length-1;i>=0;i--){
+    const m=meteorsBG[i];
+    m.age += dt; m.ax += m.vx*dt; m.ay += m.vy*dt; m.spin+= m.spinSpd*dt;
+
+    const t = Math.min(1, m.age / m.life);
+    const c = tuneRGB(COLORS7[(pitchIndex + m.hue) % 7], BAND_SAT, BAND_GAMMA);
+
+    const steps = 12, span = 0.085;
+    for(let k=steps;k>=0;k--){
+      const s = k/steps;
+      const x = m.ax - m.vx*s*span, y = m.ay - m.vy*s*span;
+      const alpha = (1-t) * (0.16 + 0.60*midNorm) * (s*s);
+      ctx.save(); ctx.translate(x,y); ctx.rotate(m.spin - s*0.5);
+      if(m.type==='gear'){
+        ctx.strokeStyle=`rgba(${c[0]},${c[1]},${c[2]},${alpha*0.9})`;
+        ctx.fillStyle  =`rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
+        ctx.lineWidth=1;
+        const teeth=8, R1=m.size*1.05, R2=m.size*0.78;
+        ctx.beginPath();
+        for(let j=0;j<teeth*2;j++){
+          const ang=j*Math.PI/teeth, rr=(j%2===0)?R1:R2;
+          const X=Math.cos(ang)*rr, Y=Math.sin(ang)*rr;
+          j?ctx.lineTo(X,Y):ctx.moveTo(X,Y);
+        }
+        ctx.closePath(); ctx.stroke(); ctx.fill();
+      }else{
+        ctx.fillStyle=`rgba(${c[0]},${c[1]},${c[2]},${alpha})`;
+        drawStarShape(ctx, m.size, m.size*0.45); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    const headA = (1 - t)*(1 - 0.25*t);
+    ctx.save(); ctx.translate(m.ax, m.ay);
+    ctx.shadowColor=`rgba(${c[0]},${c[1]},${c[2]},${0.9*headA})`;
+    ctx.shadowBlur=18;
+    if(m.type==='gear'){
+      ctx.rotate(m.spin);
+      ctx.fillStyle=`rgba(${c[0]},${c[1]},${c[2]},${0.85*headA})`;
+      const teeth=8, R1=m.size*1.05, R2=m.size*0.78;
+      ctx.beginPath();
+      for(let j=0;j<teeth*2;j++){
+        const ang=j*Math.PI/teeth, rr=(j%2===0)?R1:R2;
+        const X=Math.cos(ang)*rr, Y=Math.sin(ang)*rr;
+        j?ctx.lineTo(X,Y):ctx.moveTo(X,Y);
+      }
+      ctx.closePath(); ctx.fill();
+    }else{
+      ctx.fillStyle=`rgba(${c[0]},${c[1]},${c[2]},${0.90*headA})`;
+      drawStarShape(ctx, m.size*1.05, m.size*0.45); ctx.fill();
+    }
+    ctx.restore();
+
+    if (t>=1 || m.ax < -80 || m.ay > height+80) meteorsBG.splice(i,1);
+  }
+}
+function trySpawnMeteor(level, hiNorm){
+  if(meteorCooldown>0) return;
+  const strongLevel = level > 0.12;
+  const strongHigh  = hiNorm > 0.75;
+  const randomHit   = Math.random() < 0.012;
+  if(strongLevel || strongHigh || randomHit){
+    spawnMeteorBG();
+    meteorCooldown = 0.18 + Math.random()*0.22;
+  }
+}
+
+/* ===== p5 セットアップ/描画 ===== */
+function windowResized(){ resizeCanvas(window.innerWidth, window.innerHeight); buildBackgroundStars(); buildBand(); }
+function setup(){
+  createCanvas(window.innerWidth, window.innerHeight);
+  CTX = getCtx();                    // ★ ctxを固定キャッシュ
+  frameRate(60); pixelDensity(1.25);
+  buildBackgroundStars();
+  buildBand(); bindUI(); applySense('normal');
+}
+function bindUI(){
+  const $=id=>document.getElementById(id);
+  $('file').addEventListener('change', async (e)=>{ const f=e.target.files[0]; if(!f) return; await useFile(f); });
+  $('mic').addEventListener('click', async ()=>{ await useMic(); });
+  $('play').addEventListener('click', async ()=>{ await playFile(); });
+  $('pause').addEventListener('click', ()=>{ pauseFile(); });
+  $('record').addEventListener('click', async ()=>{ if(!mediaRec){ await startRecording(); $('record').textContent='録画停止'; $('record').classList.add('active'); } else { await stopRecording(); $('record').textContent='録画'; $('record').classList.remove('active'); } });
+  $('sense').addEventListener('change', e=>applySense(e.target.value));
+  $('zoom').addEventListener('input', e=>{ zoom=parseFloat(e.target.value); buildBand(); });
+  $('spread').addEventListener('input', e=>{ spreadCtrl=parseFloat(e.target.value); });
+}
+function draw(){
+  // 背景グラデ
+  noStroke();
+  for(let y=0;y<height;y+=3){
+    const t=y/height; fill(lerp(8,16,t), lerp(47,92,t), lerp(48,80,t)); rect(0,y,width,3);
+  }
+
+  const dt=Math.min(0.05, deltaTime/1000);
+  meteorCooldown = Math.max(0, meteorCooldown - dt);
+
+  let tempoFactor=0.0, midNorm=0.0, level=0.0, hiNorm=0.0, srcActive=false;
+  if(analyser){
+    analyser.getByteFrequencyData(freqData);
+    level = rmsLevel()*sense.ampScale;
+    srcActive=(usingMic || (mediaEl && !mediaEl.paused));
+    if(srcActive){
+      const nyq=audioCtx.sampleRate/2; const binHz=nyq/freqData.length;
+      let i0=Math.max(0, Math.floor(300/binHz)); let i1=Math.min(freqData.length-1, Math.ceil(3000/binHz));
+      let s=0; for(let i=i0;i<=i1;i++) s+=freqData[i]; const midEnergy=s/(i1-i0+1);
+      midNorm=map(midEnergy, 10, 220, 0.2, 1.2, true);
+
+      const hiE = bandEnergy(5000, 16000);
+      hiNorm = map(hiE, 20, 200, 0, 1, true);
+
+      const bpm=estimateBPM(level);
+      tempoFactor=bpm/100;
+      updatePitchIndex();
+    }
+  }
+
+  drawBackgroundStars(midNorm);
+  trySpawnMeteor(level, hiNorm);
+  updateDrawMeteorsBG(dt, midNorm);
+  drawBand(dt, midNorm, tempoFactor, srcActive);
+  drawPlanets(dt, tempoFactor, midNorm);
+}
+
+/* 便利 */
+function random(min,max){ if (max===undefined){ return Math.random()*min; } return min + Math.random()*(max-min); }
+
+/* iOS保険 */
+addEventListener('touchend', ()=>{ if(audioCtx && audioCtx.state!=='running') audioCtx.resume(); }, {passive:true});
+addEventListener('click', ()=>{ if(audioCtx && audioCtx.state!=='running') audioCtx.resume(); });
+</script>
+</body>
+</html>
