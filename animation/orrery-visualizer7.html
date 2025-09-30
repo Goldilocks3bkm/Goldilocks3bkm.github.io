@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>ガラクタ宇宙 v2r-MONO（スペクトル星＋広域流星）</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
+<style>
+  html, body, canvas { background:#000 !important; }
+  :root { color-scheme: dark; --glass: rgba(24,24,24,.68); --line: rgba(255,255,255,.18); }
+  html, body { margin:0; padding:0; background:#000; color:#eaf6f6; font-family:ui-sans-serif,system-ui,-apple-system,"Noto Sans JP",sans-serif; }
+  canvas { position:fixed!important; inset:0!important; z-index:0!important; pointer-events:none!important; }
+
+  /* UIは画面効果の影響を絶対に受けない */
+  #ui, #legend, #gearBtn {
+    position:fixed; z-index:700; isolation:isolate; mix-blend-mode:normal;
+    backdrop-filter: blur(6px);
+  }
+  #ui {
+    left:14px; top:14px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    background:var(--glass); border:1px solid var(--line); padding:8px 10px; border-radius:12px;
+  }
+  #ui button, #ui label, #ui select, #ui input[type=range]{
+    appearance:none; border:1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08); color:#eaf6f6;
+    padding:6px 10px; border-radius:10px; cursor:pointer; font-size:12px;
+  }
+  #file{ position:absolute; width:.1px; height:.1px; opacity:0; overflow:hidden; z-index:-1;}
+  #legend{
+    right:16px; top:16px; font-size:12px; line-height:1.45; color:#d8f0ff; opacity:.95;
+    background: rgba(12,12,12,.65); border:1px solid rgba(255,255,255,.10); padding:10px 12px; border-radius:10px; max-width:46ch;
+  }
+  @media (max-width:720px){ #legend{display:none;} }
+  #gearBtn{
+    left:14px; top:14px; display:none; border:1px solid rgba(255,255,255,0.18); background: rgba(255,255,255,0.08); color:#eaf6f6;
+    padding:6px 10px; border-radius:10px; cursor:pointer; font-size:14px;
+  }
+  audio#player{position:fixed;left:-9999px;top:-9999px}
+</style>
+</head>
+<body>
+  <div id="ui">
+    <label for="file">📄 音声</label><input id="file" type="file" accept="audio/mpeg,audio/wav,audio/*"/>
+    <button id="mic">🎤 マイク</button>
+    <button id="play">▶ 再生</button>
+    <button id="pause">⏸ 停止</button>
+    <button id="record">⏺ 録画</button>
+    <label>密度</label><input id="zoom" type="range" min="0.6" max="1.8" step="0.01" value="1.00"/>
+    <label>粒サイズ</label><input id="sizeScale" type="range" min="0.5" max="3.0" step="0.01" value="1.00"/>
+    <select id="sense" title="感度">
+      <option value="low">鈍感</option><option value="normal" selected>ふつう</option>
+      <option value="high">敏感</option><option value="ultra">超敏感(スマホ)</option>
+    </select>
+    <button id="hideUi">🫥 隠す</button>
+    <span id="status" style="margin-left:8px; font-size:12px; opacity:.9;">準備中（停止）</span>
+  </div>
+  <button id="gearBtn">⚙️</button>
+
+  <div id="legend">
+    <b>ガラクタ宇宙 v2r-MONO</b>
+    <div>背景：黒／星は白（Low/中/Highで<strong>発生量とサイズ</strong>が変化）。</div>
+    <div>オレリー：円の粒子（白～灰）。BPMで回転、無音は停止。</div>
+    <div>太陽：ギア同形の白半透明、微回転。</div>
+    <div>流星：画面上部〜左右端から広く出現、下向きに流れる。</div>
+  </div>
+
+  <audio id="player" preload="auto" playsinline></audio>
+
+<script>
+/* ===== 共通 ===== */
+const TAU=Math.PI*2;
+let PARTICLE_SIZE_SCALE=1.00;
+
+/* ===== WebAudio ===== */
+let audioCtx, analyser, freqData, timeData;
+let mediaEl=null, mediaElSrc=null, micSource=null, micStream=null;
+let usingMic=false, fileLoaded=false, pendingPlay=false;
+let destNode=null, mediaRec=null, chunks=[], recMime='video/webm', recExt='webm';
+const htmlPlayer=document.getElementById('player');
+
+const sense={ ampScale:1.0, gate:0.008, donDelta:0.08 };
+function applySense(mode){
+  if(mode==='low'){sense.ampScale=0.85;sense.gate=0.012;sense.donDelta=0.11;}
+  else if(mode==='high'){sense.ampScale=1.2;sense.gate=0.005;sense.donDelta=0.06;}
+  else if(mode==='ultra'){sense.ampScale=2.0;sense.gate=0.0025;sense.donDelta=0.035;}
+  else{sense.ampScale=1.0;sense.gate=0.008;sense.donDelta=0.08;}
+  const s=document.getElementById('status'); if(s) s.textContent='感度: '+mode;
+}
+async function ensureAudio(){
+  if(!audioCtx){
+    const AC=window.AudioContext||window.webkitAudioContext; audioCtx=new AC();
+    analyser=audioCtx.createAnalyser(); analyser.fftSize=2048; analyser.smoothingTimeConstant=0.85;
+    freqData=new Uint8Array(analyser.frequencyBinCount);
+    timeData=new Uint8Array(analyser.fftSize);
+    mediaEl=htmlPlayer;
+  }
+}
+function connectNode(node,monitor){ try{node.disconnect();}catch(_){ } node.connect(analyser); if(monitor) node.connect(audioCtx.destination); }
+async function useFile(f){ await ensureAudio(); usingMic=false; fileLoaded=false;
+  if(!mediaElSrc){ mediaElSrc=audioCtx.createMediaElementSource(mediaEl); }
+  connectNode(mediaElSrc,true);
+  if(mediaEl.src) try{ URL.revokeObjectURL(mediaEl.src); }catch(_){}
+  const url=URL.createObjectURL(f); mediaEl.src=url; mediaEl.load();
+  mediaEl.oncanplay=()=>{ fileLoaded=true; const s=document.getElementById('status'); if(s) s.textContent='読み込み完了（停止中）'; if(pendingPlay){ playFile(); pendingPlay=false; } };
+}
+async function playFile(){ await ensureAudio();
+  if(!fileLoaded){ pendingPlay=true; const s=document.getElementById('status'); if(s) s.textContent='読み込み中… → 自動再生'; return; }
+  try{ await audioCtx.resume(); }catch(_){}
+  try{ await mediaEl.play(); const s=document.getElementById('status'); if(s) s.textContent='再生中'; }
+  catch{ const s=document.getElementById('status'); if(s) s.textContent='再生ブロック: 画面をタップ後にもう一度'; }
+}
+async function pauseFile(){ try{ mediaEl && mediaEl.pause(); const s=document.getElementById('status'); if(s) s.textContent='停止'; }catch(_){} }
+async function useMic(){ await ensureAudio(); usingMic=true; fileLoaded=false; try{ mediaEl && mediaEl.pause(); }catch(_){}
+  micStream=await navigator.mediaDevices.getUserMedia({audio:true});
+  micSource=audioCtx.createMediaStreamSource(micStream); connectNode(micSource,false);
+  const s=document.getElementById('status'); if(s) s.textContent='マイク入力中';
+}
+async function startRecording(){
+  await ensureAudio();
+  const canvasStream=document.querySelector('canvas').captureStream(60);
+  if(!destNode){ destNode=audioCtx.createMediaStreamDestination(); }
+  if(usingMic && micSource) micSource.connect(destNode);
+  if(!usingMic && mediaElSrc) mediaElSrc.connect(destNode);
+  const mimes=['video/mp4;codecs=h264,aac','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  recMime=mimes.find(m=>MediaRecorder.isTypeSupported(m))||'video/webm';
+  recExt=recMime.includes('mp4')?'mp4':'webm';
+  const mix=new MediaStream([ ...canvasStream.getVideoTracks(), ...destNode.stream.getAudioTracks() ]);
+  mediaRec=new MediaRecorder(mix,{mimeType:recMime});
+  chunks=[]; mediaRec.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
+  mediaRec.onstop=()=>{ const blob=new Blob(chunks,{type:recMime}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=`garakuta.${recExt}`; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1200); mediaRec=null; };
+  mediaRec.start();
+}
+async function stopRecording(){ if(mediaRec && mediaRec.state!=='inactive') mediaRec.stop(); }
+
+/* ===== 解析 ===== */
+function rmsLevel(){ analyser.getByteTimeDomainData(timeData); let s=0; for(let i=0;i<timeData.length;i++){ const v=(timeData[i]-128)/128; s+=v*v; } return Math.sqrt(s/timeData.length); }
+let lastLevel=0,beatTimes=[];
+function estimateBPM(lvl){ const now=millis(); const delta=Math.max(0,lvl-lastLevel); lastLevel=lvl;
+  if(delta>sense.donDelta && lvl>sense.gate*1.5){ beatTimes.push(now); if(beatTimes.length>16) beatTimes.shift(); }
+  if(beatTimes.length<4) return 100;
+  const iv=[]; for(let i=1;i<beatTimes.length;i++) iv.push(beatTimes[i]-beatTimes[i-1]); iv.sort((a,b)=>a-b);
+  let bpm=60000/(iv[Math.floor(iv.length/2)]||600); while(bpm<60)bpm*=2; while(bpm>220)bpm/=2; return bpm;
+}
+function bandEnergy(hz0,hz1){
+  if(!freqData||!audioCtx) return 0;
+  const nyq=audioCtx.sampleRate/2, binHz=nyq/freqData.length;
+  const i0=Math.max(0,Math.floor(hz0/binHz)), i1=Math.min(freqData.length-1,Math.ceil(hz1/binHz));
+  let s=0; for(let i=i0;i<=i1;i++) s+=freqData[i]; return s/Math.max(1,(i1-i0+1));
+}
+// 感度強めの正規化（下限を下げ・上限もやや下げてリニア部を広げる）
+function normBand(h0,h1, lo=8, hi=160){
+  const e=bandEnergy(h0,h1); return Math.min(1, Math.max(0, (e-lo)/(hi-lo) ));
+}
+
+/* ===== 背景：黒＋白いスペクトル星 ===== */
+let staticStars=[];  // ごく薄い常時星（無音でも真っ黒回避）
+let sparkles=[];     // スペクトル連動の一時粒子
+
+function buildStaticStars(){
+  staticStars=[];
+  const N=Math.floor(width*height*0.00040); // ← 量 2倍
+  for(let i=0;i<N;i++){
+    staticStars.push({
+      x:Math.random()*width,
+      y:Math.random()*height,
+      // ← サイズ 1.5倍
+      r:(Math.random()<0.85? random(0.9,1.8) : random(1.8,3.0)),
+      seed:Math.random()*1000
+    });
+  }
+}
+function spawnSparkle(type, count){
+  for(let i=0;i<count;i++){
+    const x=Math.random()*width, y=Math.random()*height;
+    const r = type===0 ? random(0.6,1.4) : type===1 ? random(1.6,2.8) : random(3.2,5.0);
+    sparkles.push({x,y,r,age:0,life:random(0.9,1.8), seed:Math.random()*1000});
+  }
+}
+function drawBackground(midNorm, dt){
+  const ctx=drawingContext;
+
+  // 1) 常時の薄い星（わずかに明滅）
+  for(const s of staticStars){
+    const tw=0.4 + 0.6*(Math.sin(millis()*0.0015 + s.seed)*0.5+0.5);
+    const a=0.10 + 0.15*tw;
+    ctx.fillStyle=`rgba(255,255,255,${a})`;
+    ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,TAU); ctx.fill();
+  }
+
+  // 2) スペクトル連動スパークル
+  const eL=normBand(200,1000), eM=normBand(1000,4000), eH=normBand(4000,16000);
+  const area=(width*height)/(1280*720);
+  // ← 発生レート 2倍
+  const rateS=180*area*eL, rateM=120*area*eM, rateB=60*area*eH;
+  if(!drawBackground.acc) drawBackground.acc=[0,0,0];
+  drawBackground.acc[0]+=rateS*dt; drawBackground.acc[1]+=rateM*dt; drawBackground.acc[2]+=rateB*dt;
+  for(let t=0;t<3;t++){ const n=Math.floor(drawBackground.acc[t]); if(n>0){ spawnSparkle(t,n); drawBackground.acc[t]-=n; } }
+
+  // 更新＆描画（明滅感度もアップ）
+  for(let i=sparkles.length-1;i>=0;i--){
+    const p=sparkles[i]; p.age+=dt;
+    const t=Math.min(1,p.age/p.life);
+    const aShape=(t<0.5)? (t*2) : (1-(t-0.5)*2);      // フェードイン→アウト
+    const alpha=Math.min(1, (0.15 + 0.95*midNorm) * aShape);
+    ctx.fillStyle=`rgba(255,255,255,${alpha})`;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r*PARTICLE_SIZE_SCALE,0,TAU); ctx.fill();
+    if(p.age>=p.life) sparkles.splice(i,1);
+  }
+}
+
+/* ===== ガラクタ形状 ===== */
+function drawStarShape(ctx, outer, inner){
+  ctx.beginPath();
+  for(let i=0;i<10;i++){ const a=i*TAU/10 - Math.PI/2, r=(i%2===0)? outer:inner; const x=Math.cos(a)*r, y=Math.sin(a)*r; i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+  ctx.closePath();
+}
+// リアル寄りギア：円胴＋歯、中心穴つき（evenoddで抜き）
+function drawGear(ctx, r, teeth=12){
+  const R_out=r, R_in=r*0.78, hole=r*0.30;
+  ctx.beginPath();
+  for(let i=0;i<teeth*2;i++){
+    const ang=i*Math.PI/teeth, rr=(i%2===0)? R_out : R_in;
+    const x=Math.cos(ang)*rr, y=Math.sin(ang)*rr;
+    i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+  }
+  ctx.closePath();
+  ctx.moveTo(hole,0); ctx.arc(0,0,hole,0,TAU);
+  ctx.fill('evenodd');
+}
+// ねじ：丸頭＋中にバツ
+function drawScrew(ctx, r){
+  const lw = Math.max(1.5, r*0.24);
+  ctx.beginPath(); ctx.arc(0,0,r,0,TAU); ctx.fill();
+  ctx.save();
+  ctx.strokeStyle='rgba(0,0,0,0.35)';
+  ctx.lineWidth=lw; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(-r*0.65,-r*0.65); ctx.lineTo(r*0.65,r*0.65); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(r*0.65,-r*0.65); ctx.lineTo(-r*0.65,r*0.65); ctx.stroke();
+  ctx.restore();
+}
+// ぜんまい
+function drawSpring(ctx, r){
+  const turns=1.6, steps=120, w=Math.max(2, r*0.35);
+  ctx.save(); ctx.lineWidth=w; ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.beginPath();
+  for(let i=0;i<=steps;i++){
+    const t=i/steps, ang=turns*TAU*t, rad=r*0.2 + (r*0.9- r*0.2)*t;
+    const x=Math.cos(ang)*rad, y=Math.sin(ang)*rad; i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+  }
+  ctx.stroke(); ctx.restore();
+}
+
+/* ===== 惑星 ===== */
+const PLANETS=[
+  {id:'mercury', r:10,  col:[200,200,200]},
+  {id:'venus',   r:14,  col:[230,230,230]},
+  {id:'earth',   r:15,  col:[220,220,220]},
+  {id:'mars',    r:13,  col:[210,210,210]},
+  {id:'jupiter', r:28,  col:[235,235,235]},
+  {id:'saturn',  r:26,  col:[230,230,230], ring:true},
+  {id:'uranus',  r:20,  col:[215,215,215]},
+  {id:'neptune', r:20,  col:[215,215,215]},
+  {id:'pluto',   r:9,   col:[205,205,205]}
+];
+
+/* ===== オレリー（円） ===== */
+let zoom=1.00;
+let orrery={ rings:[0.32,0.47,0.62], particles:[], planets:[], sunR:120 };
+
+function buildOrrery(){
+  const baseR=Math.min(width, height) * 0.9 * zoom;
+
+  orrery.particles = orrery.rings.map((ratio,ri)=>{
+    const R=ratio*baseR;
+    const N=Math.max(120, Math.floor(R*0.40));
+    const items=[];
+    for(let i=0;i<N;i++){
+      const a=(i/N)*TAU;
+      const sizeBase=(ri===0?6:ri===1?8:10)*(0.9+Math.random()*0.7);
+      const r=Math.random();
+      const kind = r<0.40?'star' : r<0.70?'gear' : r<0.88?'screw' : 'crank';
+      items.push({a, R, kind, size:sizeBase,
+                  spin:Math.random()*TAU, spinSpd:(Math.random()*1.0-0.5)});
+    }
+    const baseSpd=(ri===0?0.08:ri===1?0.06:0.045);
+    return {R,items, rot:Math.random()*TAU, baseSpd};
+  });
+
+  orrery.planets=[];
+  [[0,1,2,3],[4,5],[6,7,8]].forEach((ids,ri)=>{
+    const R=orrery.rings[ri]*baseR;
+    ids.forEach(id=>{
+      const p=PLANETS[id];
+      const baseSpd=(ri===0?0.22:ri===1?0.16:0.12)*(0.6+Math.random()*0.8);
+      orrery.planets.push({ring:ri,R,t:Math.random()*TAU, baseSpd,
+        id:p.id,rad:p.r,col:p.col.slice(),ringed:!!p.ring});
+    });
+  });
+
+  orrery.sunR = Math.min(200, width*0.15);
+}
+
+function drawOrrery(dt, midNorm, tempoFactor, srcActive){
+  const ctx=drawingContext; const cx=width/2, cy=(height - orrery.sunR*0.5) + height*0.20;
+
+  // 太陽（ギア同形・白半透明：感度強め）
+  const aSun = Math.min(1, 0.30 + 1.10*midNorm);
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(0.25*millis()/1000);
+  ctx.fillStyle=`rgba(255,255,255,${aSun})`; drawGear(ctx, orrery.sunR, 14); ctx.restore();
+
+  // 粒子リング（明滅感度アップ）
+  const ringFactor = srcActive ? tempoFactor : 0;
+  for(const ring of orrery.particles){
+    ring.rot += ring.baseSpd * ringFactor * dt;
+    for(const it of ring.items){
+      it.spin += it.spinSpd*dt;
+      const a = it.a + ring.rot;
+      const x = cx + Math.cos(a)*ring.R;
+      const y = cy + Math.sin(a)*ring.R;
+      const alpha = Math.min(1, 0.35 + 0.95*midNorm);
+      const sz = it.size * PARTICLE_SIZE_SCALE;
+
+      ctx.save(); ctx.translate(x,y); ctx.rotate(it.spin*0.25);
+      ctx.fillStyle=`rgba(255,255,255,${alpha})`;
+      ctx.strokeStyle=`rgba(255,255,255,${alpha})`;
+      if(it.kind==='star'){ drawStarShape(ctx,sz,sz*0.45); ctx.fill(); }
+      else if(it.kind==='gear'){ drawGear(ctx,sz,12); }
+      else if(it.kind==='screw'){ drawScrew(ctx,sz*0.95); }
+      else { drawSpring(ctx,sz); }
+      ctx.restore();
+    }
+  }
+
+  // 惑星
+  const pFactor = srcActive ? tempoFactor : 0;
+  for(const p of orrery.planets){
+    p.t += p.baseSpd * pFactor * dt; const a=p.t;
+    const x=cx + Math.cos(a)*p.R, y=cy + Math.sin(a)*p.R;
+    ctx.save(); ctx.translate(x,y);
+    if(p.ringed){
+      const ringW=Math.max(2,p.rad*0.22), rx=p.rad*1.8, ry=p.rad*0.62;
+      ctx.save(); ctx.rotate(-0.6);
+      ctx.lineWidth=ringW; ctx.strokeStyle=`rgba(255,255,255,0.85)`;
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,TAU); ctx.stroke(); ctx.restore();
+    }
+    const g=Math.min(1,0.35+0.85*midNorm);
+    ctx.shadowColor=`rgba(255,255,255,${0.5*g})`; ctx.shadowBlur=8;
+    ctx.fillStyle=`rgba(255,255,255,0.92)`; ctx.beginPath(); ctx.arc(0,0,p.rad,0,TAU); ctx.fill();
+    ctx.restore();
+  }
+}
+
+/* ===== 流星（上部〜左右端から広範囲スポーン／下向き） ===== */
+let meteors=[], meteorCooldown=0;
+function pickKindByBand(){ // 帯域で形をざっくり
+  const L=normBand(200,1000), M=normBand(1000,4000), H=normBand(4000,16000);
+  const arr=[{e:L,t:'gear'},{e:M,t:'star'},{e:H,t:'screw'}];
+  arr.sort((a,b)=>b.e-a.e);
+  return arr[0].t; // springはレアでランダムに混ぜる
+}
+function spawnMeteor(){
+  const kind = (Math.random()<0.12)? 'crank' : pickKindByBand();
+  const life=0.45+Math.random()*0.30, speed=900+Math.random()*500;
+
+  // 画面上部〜左右端まで広く
+  const x = -width*0.10 + Math.random()*(width*1.20);
+  const y = -height*0.10 + Math.random()*(height*0.40);
+
+  // 下向き（210°〜330°）
+  const ang = (210 + Math.random()*120) * Math.PI/180;
+  const vx=Math.cos(ang)*speed, vy=Math.sin(ang)*speed;
+
+  meteors.push({
+    ax:x, ay:y, vx, vy, age:0, life,
+    kind, spin:random(TAU), spinSpd:random(-2.0,2.0),
+    size:(2.6+Math.random()*3.8)*PARTICLE_SIZE_SCALE
+  });
+}
+function drawMeteors(dt, midNorm){
+  const ctx=drawingContext;
+  for(let i=meteors.length-1;i>=0;i--){
+    const m=meteors[i]; m.age+=dt; m.ax+=m.vx*dt; m.ay+=m.vy*dt; m.spin+=m.spinSpd*dt;
+    const t=Math.min(1,m.age/m.life);
+
+    const steps=14, span=0.095;
+    for(let k=steps;k>=0;k--){
+      const s=k/steps, x=m.ax - m.vx*s*span, y=m.ay - m.vy*s*span;
+      const a=(1-t)*(0.20 + 0.55*midNorm)*(s*s);
+      ctx.save(); ctx.translate(x,y); ctx.rotate(m.spin - s*0.5);
+      ctx.fillStyle=`rgba(255,255,255,${a})`; ctx.strokeStyle=`rgba(255,255,255,${a})`;
+      if(m.kind==='star'){ drawStarShape(ctx,m.size,m.size*0.45); ctx.fill(); }
+      else if(m.kind==='gear'){ drawGear(ctx,m.size,10); }
+      else if(m.kind==='screw'){ drawScrew(ctx,m.size*0.9); }
+      else { drawSpring(ctx,m.size*0.9); }
+      ctx.restore();
+    }
+    const headA=(1 - t)*(1 - 0.25*t);
+    ctx.save(); ctx.translate(m.ax,m.ay);
+    ctx.shadowColor=`rgba(255,255,255,${0.95*headA})`; ctx.shadowBlur=18;
+    ctx.fillStyle=`rgba(255,255,255,${0.95*headA})`;
+    if(m.kind==='star'){ drawStarShape(ctx,m.size*1.1,m.size*0.45); ctx.fill(); }
+    else if(m.kind==='gear'){ drawGear(ctx,m.size*1.05,10); }
+    else if(m.kind==='screw'){ drawScrew(ctx,m.size); }
+    else { drawSpring(ctx,m.size*0.95); }
+    ctx.restore();
+
+    if(t>=1 || m.ax<-120 || m.ax>width+120 || m.ay>height+120) meteors.splice(i,1);
+  }
+}
+function trySpawnMeteor(level, hiNorm){
+  if(meteorCooldown>0) return;
+  const randomHit = Math.random() < 0.05;
+  if(level>0.10 || hiNorm>0.70 || randomHit){
+    spawnMeteor();
+    meteorCooldown = 0.20 + Math.random()*0.25;
+  }
+}
+
+/* ===== p5 セットアップ/描画 ===== */
+function windowResized(){ resizeCanvas(window.innerWidth, window.innerHeight); buildStaticStars(); buildOrrery(); }
+function setup(){
+  createCanvas(window.innerWidth, window.innerHeight);
+  frameRate(60); pixelDensity(1.25);
+  buildStaticStars(); buildOrrery(); bindUI(); applySense('normal');
+}
+function bindUI(){
+  const $=id=>document.getElementById(id);
+  $('file').addEventListener('change', async (e)=>{ const f=e.target.files[0]; if(!f) return; await useFile(f); });
+  $('mic').addEventListener('click', async ()=>{ await useMic(); });
+  $('play').addEventListener('click', async ()=>{ await playFile(); });
+  $('pause').addEventListener('click', ()=>{ pauseFile(); });
+  $('record').addEventListener('click', async ()=>{ if(!mediaRec){ await startRecording(); $('record').textContent='録画停止'; $('record').classList.add('active'); } else { await stopRecording(); $('record').textContent='録画'; $('record').classList.remove('active'); } });
+  $('sense').addEventListener('change', e=>applySense(e.target.value));
+  $('zoom').addEventListener('input', e=>{ zoom=parseFloat(e.target.value); buildOrrery(); });
+  $('sizeScale').addEventListener('input', e=>{ PARTICLE_SIZE_SCALE=parseFloat(e.target.value); });
+
+  const gear=document.getElementById('gearBtn');
+  $('hideUi').addEventListener('click', ()=>{
+    document.getElementById('ui').style.display='none';
+    document.getElementById('legend').style.display='none';
+    gear.style.display='block';
+  });
+  gear.addEventListener('click', ()=>{
+    document.getElementById('ui').style.display='flex';
+    document.getElementById('legend').style.display='';
+    gear.style.display='none';
+  });
+}
+
+function draw(){
+  const dt=Math.min(0.05, deltaTime/1000);
+
+  /* 背景は必ず黒でクリア */
+  background(0);
+
+  let tempoFactor=0, midNorm=0, level=0, hiNorm=0, srcActive=false;
+
+  if(analyser){
+    analyser.getByteFrequencyData(freqData);
+    level=rmsLevel()*sense.ampScale;
+    srcActive=(usingMic || (mediaEl && !mediaEl.paused));
+    if(srcActive){
+      midNorm = normBand(300,3000);
+      hiNorm  = normBand(5000,16000);
+      tempoFactor=estimateBPM(level)/100;
+    }
+  }
+
+  meteorCooldown = Math.max(0, meteorCooldown - dt);
+
+  drawBackground(midNorm, dt);
+  trySpawnMeteor(level, hiNorm);
+  drawMeteors(dt, midNorm);
+  drawOrrery(dt, midNorm, tempoFactor, srcActive);
+}
+
+/* util */
+function random(min,max){ if(max===undefined) return Math.random()*min; return min + Math.random()*(max-min); }
+
+/* iOS保険 */
+addEventListener('touchend', ()=>{ if(audioCtx && audioCtx.state!=='running') audioCtx.resume(); }, {passive:true});
+addEventListener('click', ()=>{ if(audioCtx && audioCtx.state!=='running') audioCtx.resume(); });
+</script>
+</body>
+</html>
