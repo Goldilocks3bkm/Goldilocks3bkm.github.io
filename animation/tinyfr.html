@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Leaf & Flight Feather Visualizer — Spectral Monochrome</title>
+<style>
+  :root{ --glass:rgba(0,0,0,.06); --line:rgba(0,0,0,.15) }
+  html,body{ margin:0; height:100%; background:#fff; color:#111; font-family:ui-sans-serif,system-ui,"Noto Sans JP",-apple-system,Segoe UI,sans-serif; }
+  canvas{ position:fixed; inset:0; z-index:0; display:block; width:100vw; height:100vh; }
+
+  #ui{
+    position:fixed; left:14px; top:14px; z-index:10; display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+    backdrop-filter: blur(6px); background:var(--glass); border:1px solid var(--line); padding:8px 10px; border-radius:12px
+  }
+  #ui button,#ui label,#ui select,#ui input[type=range]{
+    appearance:none; border:1px solid var(--line); background:#fff; color:#111;
+    padding:6px 10px; border-radius:10px; cursor:pointer; font-size:12px
+  }
+  #amount{ width:140px; padding:0; height:26px }
+  #file{ position:absolute; width:.1px; height:.1px; opacity:0; overflow:hidden; z-index:-1 }
+  #status{ font-size:12px; opacity:.85; margin-left:6px }
+
+  .tabs { display:flex; gap:6px; margin-left:6px }
+  .tab { background:#fff; border:1px solid var(--line); border-radius:999px; padding:6px 10px; font-size:12px; cursor:pointer }
+  .tab.active { background:#111; color:#fff; border-color:#111 }
+
+  body[data-ui="off"] #ui { display:none !important; }
+
+  /* 常時表示の歯車（UI復帰用） */
+  #gear{
+    position:fixed; left:14px; top:14px; z-index:11; width:36px; height:36px; border-radius:999px;
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+    background:var(--glass); border:1px solid var(--line); user-select:none;
+  }
+  body[data-ui="on"]  #gear{ opacity:.35 }
+  body[data-ui="off"] #gear{ opacity:1 }
+</style>
+</head>
+<body data-ui="on">
+  <canvas id="cv"></canvas>
+  <audio id="player" preload="auto" crossorigin="anonymous" playsinline style="position:absolute;left:-9999px;top:-9999px"></audio>
+
+  <button id="gear" title="UIの表示/非表示 (H)">⚙️</button>
+
+  <div id="ui" role="region" aria-label="コントロール">
+    <label for="file">📄 音声</label><input id="file" type="file" accept="audio/*"/>
+    <button id="mic">🎤 マイク</button>
+    <button id="play">▶ 再生</button>
+    <button id="pause">⏸ 停止</button>
+    <button id="record">⏺ 録画</button>
+    <select id="sense" title="感度">
+      <option value="low">鈍感</option>
+      <option value="normal" selected>ふつう</option>
+      <option value="high">敏感</option>
+      <option value="ultra">超敏感(スマホ)</option>
+    </select>
+
+    <div class="tabs" role="tablist" aria-label="表示モード">
+      <button class="tab active" data-mode="leaves"  role="tab" aria-selected="true">🍃 葉っぱ</button>
+      <button class="tab"        data-mode="feathers" role="tab" aria-selected="false">🪶 羽</button>
+      <button class="tab"        data-mode="both"     role="tab" aria-selected="false">🍃+🪶 両方</button>
+    </div>
+
+    <!-- 量スライダー -->
+    <label for="amount" title="生成量（0〜200%）">量</label>
+    <input id="amount" type="range" min="0" max="200" value="100" />
+    <span id="amountVal">100%</span>
+
+    <button id="toggleUi" title="UIを隠す/表示 (H)">👻 UI隠す</button>
+    <span id="status">準備中（音声を再生 or マイクONで動きます）</span>
+  </div>
+
+<script>
+/* =============== Canvas =============== */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d', { alpha:false });
+let DPR = Math.min(2, window.devicePixelRatio||1);
+function resize(){
+  DPR = Math.min(2, window.devicePixelRatio||1);
+  const w = innerWidth  || document.documentElement.clientWidth;
+  const h = innerHeight || document.documentElement.clientHeight;
+  cv.style.width = w + 'px'; cv.style.height = h + 'px';
+  cv.width  = Math.floor(w * DPR);
+  cv.height = Math.floor(h * DPR);
+}
+addEventListener('resize', resize); resize();
+
+/* =============== UI =============== */
+const $ = id => document.getElementById(id);
+const statusEl    = $('status');
+const toggleUiBtn = $('toggleUi');
+const gearBtn     = $('gear');
+const amountRange = $('amount');
+const amountVal   = $('amountVal');
+
+function setUiHidden(hidden){
+  document.body.dataset.ui = hidden ? 'off' : 'on';
+  toggleUiBtn.textContent = hidden ? '👻 UI表示' : '👻 UI隠す';
+}
+const getUiHidden = () => document.body.dataset.ui === 'off';
+toggleUiBtn.addEventListener('click', ()=> setUiHidden(!getUiHidden()));
+gearBtn.addEventListener('click',    ()=> setUiHidden(!getUiHidden()));
+addEventListener('keydown', e=>{ if (e.key.toLowerCase()==='h') setUiHidden(!getUiHidden()); });
+
+/* tabs */
+let mode = 'leaves'; // 'leaves' | 'feathers' | 'both'
+document.querySelectorAll('.tab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab').forEach(b=>{ b.classList.remove('active'); b.setAttribute('aria-selected','false'); });
+    btn.classList.add('active'); btn.setAttribute('aria-selected','true');
+    mode = btn.dataset.mode;
+  });
+});
+
+/* 量スライダー */
+let spawnMult = 1.0;
+function updateAmountUI(){
+  spawnMult = (parseInt(amountRange.value,10) || 100) / 100;
+  amountVal.textContent = Math.round(spawnMult*100) + '%';
+}
+amountRange.addEventListener('input', updateAmountUI);
+updateAmountUI();
+
+/* =============== Audio =============== */
+let audioCtx, analyser, freqData, timeData;
+let mediaEl = $('player'), mediaElSrc=null, micSource=null;
+let usingMic=false, fileLoaded=false, pendingPlay=false;
+let destNode=null, mediaRec=null, chunks=[], recMime='video/webm', recExt='webm';
+
+const sense = { ampScale:1.0, gate:0.008, donDelta:0.08, smooth:0.08 };
+function applySense(m){
+  if (m==='low'){ sense.ampScale=0.85; sense.gate=0.012; sense.donDelta=0.11; sense.smooth=0.12; }
+  else if (m==='high'){ sense.ampScale=1.25; sense.gate=0.005; sense.donDelta=0.06; sense.smooth=0.06; }
+  else if (m==='ultra'){ sense.ampScale=2.0; sense.gate=0.0025; sense.donDelta=0.035; sense.smooth=0.03; }
+  else { sense.ampScale=1.0; sense.gate=0.008; sense.donDelta=0.08; sense.smooth=0.08; }
+  statusEl.textContent = '感度: '+m+'（音声を再生 or マイクONで可視化）';
+}
+$('sense').addEventListener('change', e=>applySense(e.target.value));
+applySense('normal');
+
+ensureAudio().catch(()=>{});
+addEventListener('pointerdown', ()=>ensureAudio(), {once:true});
+addEventListener('keydown',     ()=>ensureAudio(), {once:true});
+
+async function ensureAudio(){
+  if (!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext; audioCtx = new AC();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.80;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    timeData = new Uint8Array(analyser.fftSize);
+  }
+}
+function connectNode(node, monitor){
+  try{ node.disconnect(); }catch(_){}
+  node.connect(analyser);
+  if (monitor) node.connect(audioCtx.destination);
+}
+
+/* file / mic / play */
+$('file').addEventListener('change', async (e)=>{
+  const f=e.target.files && e.target.files[0]; if(!f) return;
+  await ensureAudio(); usingMic=false; fileLoaded=false;
+  try{ mediaEl.pause(); }catch(_){}
+  if (!mediaElSrc){ mediaElSrc = audioCtx.createMediaElementSource(mediaEl); }
+  connectNode(mediaElSrc, true);
+  if (mediaEl.src) URL.revokeObjectURL(mediaEl.src);
+  mediaEl.src = URL.createObjectURL(f); mediaEl.loop=false; mediaEl.load();
+  mediaEl.oncanplay = ()=>{ fileLoaded=true; statusEl.textContent='読み込み完了 → ▶ で再生'; if(pendingPlay){ playFile(); pendingPlay=false; } };
+});
+$('mic').addEventListener('click', async ()=>{
+  try{
+    await ensureAudio(); usingMic=true; fileLoaded=false; mediaEl.pause();
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    micSource=audioCtx.createMediaStreamSource(stream);
+    connectNode(micSource, false);
+    statusEl.textContent='マイク入力中';
+  }catch(e){ alert('マイク権限が必要です: '+e); }
+});
+$('play').addEventListener('click', async ()=>{ await playFile(); });
+$('pause').addEventListener('click', ()=>{ pauseFile(); });
+
+async function playFile(){
+  await ensureAudio(); try{ await audioCtx.resume(); }catch(_){}
+  if (usingMic){ statusEl.textContent='listening'; return; }
+  if (!fileLoaded){ pendingPlay=true; statusEl.textContent='読み込み中…→自動再生'; return; }
+  try{ await mediaEl.play(); statusEl.textContent='再生中'; }
+  catch{ statusEl.textContent='再生ブロック：画面をタップ後にもう一度'; }
+}
+function pauseFile(){ try{ if(!usingMic) mediaEl.pause(); statusEl.textContent='停止'; }catch(_){} }
+
+/* recording (optional) */
+$('record').addEventListener('click', async ()=>{
+  if (!mediaRec){ await startRecording(); $('record').textContent='録画停止'; $('record').classList.add('active'); }
+  else { await stopRecording(); $('record').textContent='録画'; $('record').classList.remove('active'); }
+});
+async function startRecording(){
+  await ensureAudio(); const canvasStream=cv.captureStream(60);
+  if(!destNode){ destNode = audioCtx.createMediaStreamDestination(); }
+  if (usingMic && micSource) micSource.connect(destNode);
+  if (!usingMic && mediaElSrc) mediaElSrc.connect(destNode);
+  const mimes=['video/mp4;codecs=h264,aac','video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  recMime = mimes.find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
+  recExt  = recMime.includes('mp4') ? 'mp4' : 'webm';
+  const mix = new MediaStream([ ...canvasStream.getVideoTracks(), ...destNode.stream.getAudioTracks() ]);
+  mediaRec = new MediaRecorder(mix, { mimeType:recMime }); chunks=[];
+  mediaRec.ondataavailable = e=>{ if(e.data.size>0) chunks.push(e.data); };
+  mediaRec.onstop = ()=>{
+    const blob=new Blob(chunks,{type:recMime}); const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download=`leaf-feather.${recExt}`; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 1200);
+    mediaRec=null;
+  };
+  mediaRec.start();
+}
+async function stopRecording(){ if(mediaRec && mediaRec.state!=='inactive') mediaRec.stop(); }
+
+/* =============== Analysis helpers =============== */
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function rmsLevel(){
+  if(!analyser) return 0;
+  analyser.getByteTimeDomainData(timeData);
+  let s=0; for(let i=0;i<timeData.length;i++){ const v=(timeData[i]-128)/128; s+=v*v; }
+  return Math.sqrt(s/timeData.length);
+}
+function bandEnergy(hz0,hz1){
+  if(!analyser) return 0;
+  analyser.getByteFrequencyData(freqData);
+  const nyq=audioCtx.sampleRate/2; const binHz=nyq/freqData.length;
+  let i0=Math.max(0,Math.floor(hz0/binHz)), i1=Math.min(freqData.length-1,Math.ceil(hz1/binHz));
+  if(i1<=i0) return 0; let sum=0; for(let i=i0;i<=i1;i++) sum+=freqData[i]; return sum/(i1-i0+1);
+}
+
+/* =============== Visual state =============== */
+let levelS=0;
+let lowS=0, mid2k4kS=0, highS=0;    // スペクトル用
+const Leaves=[], Feathers=[];
+const MAX_ITEMS = 1400;
+
+// さらに30%白く（=不透明度ベース 0.56）
+const BASE_OPACITY = 0.56;
+
+/* =============== Shapes =============== */
+class Leaf{
+  constructor(x,y,rot,life){
+    this.x=x; this.y=y; this.rot=rot; this.life=life*0.8; // 20%短命
+    this.t=0;
+    // ゆるやかに下向きに降下（上移動なし）＋横ゆらぎ
+    this.vx=(Math.random()-0.5)*6;
+    this.vy= 6 + Math.random()*8;  // 常に下へ
+    // サイズばらつき大（15%増し＋幅広ランダム）
+    this.size = (5 + Math.random()*28) * 1.15;
+    this.tw = Math.random()*Math.PI*2;
+  }
+  update(dt){
+    this.t += dt; this.tw += dt*2.0;
+    this.x += this.vx * dt + Math.sin(this.tw)*3*dt;
+    this.y += this.vy * dt;
+  }
+  draw(alphaTone){
+    const k = clamp(this.t/this.life, 0, 1);
+    const life = Math.pow(1 - k, 0.9);
+    const a = BASE_OPACITY * life * alphaTone;
+    if(a<=0.01) return;
+    const s=this.size*DPR;
+    ctx.save();
+    ctx.translate(this.x*DPR,this.y*DPR);
+    ctx.rotate(this.rot + Math.sin(this.tw)*0.15);
+    ctx.globalAlpha=a;
+    ctx.fillStyle='#000'; ctx.strokeStyle='#000'; ctx.lineWidth=Math.max(1,1.2*DPR);
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.quadraticCurveTo(-s*0.45,-s*0.36, 0,-s);
+    ctx.quadraticCurveTo( s*0.45,-s*0.36, 0,0);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(0,-s*0.86); ctx.lineTo(0,-s*0.14); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/* === Flight Feather（先端△／根元丸＋カラムス＋けば） === */
+class Feather{
+  constructor(x,y,rot,life){
+    this.x=x; this.y=y; this.rot0=rot; this.life=life*0.8; // 20%短命
+    this.t=0;
+
+    // ふわ落ち
+    this.vx=(Math.random()-0.5)*9;
+    this.vy= 8 + Math.random()*18;
+    this.g  = 18 + Math.random()*16;
+    this.drag=0.996;
+
+    // サイズばらつき（幅広）→ 全体を30%小さく
+    this.length = (16 + Math.random()*40) * 0.7;          // L
+    this.width  = this.length * (0.20 + Math.random()*0.05);
+
+    // 丸まり
+    this.curve0 = 0.22 + Math.random()*0.14;
+    this.curveAmp = 0.10 + Math.random()*0.10;
+
+    // 先端の先細り（外弁>内弁）
+    this.tipTaperPowOuter = 1.45;
+    this.tipTaperPowInner = 1.18;
+
+    // アニメ
+    this.waveT  = Math.random()*Math.PI*2;
+    this.spin   = (Math.random()-0.5)*0.14; // 姿勢保持寄り
+    this.seed = Math.random()*1000;
+    this.samples = 20;
+  }
+
+  update(dt){
+    this.t += dt;
+    this.waveT += dt*2.0;
+    this.vy += this.g*dt;
+    this.vx *= this.drag; this.vy *= this.drag;
+    this.x += this.vx * dt;
+    this.y += this.vy * dt + Math.sin(this.waveT)*5*dt;
+  }
+
+  draw(alphaTone){
+    const k=clamp(this.t/this.life,0,1);
+    const life = Math.pow(1 - k, 0.92);
+    const a = BASE_OPACITY * life * alphaTone;
+    if (a <= 0.01) return;
+
+    const L=this.length*DPR, W=this.width*DPR;
+    const cur = (this.curve0 + this.curveAmp*k);
+    const rot = this.rot0 + this.spin*this.t + Math.sin(this.waveT)*0.10;
+
+    // 中心線（0→1）
+    const cx = t =>  (L*cur*0.18) * Math.sin(Math.PI*t);
+    const cy = t => -L*t;
+    const deriv = t => {
+      const dx = (L*cur*0.18) * Math.PI * Math.cos(Math.PI*t);
+      const dy = -L, len = Math.hypot(dx,dy)||1;
+      return {tx:dx/len, ty:dy/len, nx:dy/len, ny:-dx/len};
+    };
+
+    // 非対称羽弁幅：内側広・外側狭
+    const wInner = t => W*0.95 * (1 - Math.pow(t, this.tipTaperPowInner));
+    const wOuter = t => W*0.60 * (1 - Math.pow(t, this.tipTaperPowOuter));
+
+    // エッジ微細（根元は0）
+    const edgeNoise = t => (t<0.05?0:
+      (Math.sin(this.seed*13.7*t)*0.05 + Math.sin(31.3*t)*0.035) * W*(1-t)*0.12);
+
+    // ポリゴン（右→先端→左）
+    const right=[], left=[];
+    for(let i=0;i<=this.samples;i++){
+      const t=i/this.samples, px=cx(t), py=cy(t), {nx,ny}=deriv(t);
+      right.push([px + nx*(wOuter(t)+edgeNoise(t)), py + ny*(wOuter(t)+edgeNoise(t))]);
+      left .push([px - nx*(wInner(t)+edgeNoise(t)), py - ny*(wInner(t)+edgeNoise(t))]);
+    }
+    left.reverse();
+
+    // 根元の丸み＋カラムス長
+    const w0R=wOuter(0), w0L=wInner(0);
+    const baseBulgeY = Math.max(w0R, w0L) * 0.9;
+    const calamusLen = Math.max(8, W*0.7);
+
+    ctx.save();
+    ctx.translate(this.x*DPR, this.y*DPR);
+    ctx.rotate(rot);
+
+    // シルエット（黒）
+    ctx.globalAlpha=a;
+    ctx.fillStyle='#000';
+    ctx.beginPath();
+    ctx.moveTo(right[0][0], right[0][1]);
+    for(let i=1;i<right.length;i++) ctx.lineTo(right[i][0], right[i][1]);
+    for(let i=0;i<left.length;i++)  ctx.lineTo(left[i][0],  left[i][1]);
+    ctx.quadraticCurveTo(0, baseBulgeY, right[0][0], right[0][1]);
+    ctx.closePath(); ctx.fill();
+
+    // 羽軸（細い骨）
+    ctx.strokeStyle='#000';
+    ctx.lineCap='round';
+    ctx.lineWidth=Math.max(0.9, 1.1*DPR);
+    ctx.beginPath();
+    for(let i=0;i<=this.samples;i++){
+      const t=i/this.samples, px=cx(t), py=cy(t);
+      if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+    }
+    ctx.stroke();
+
+    // カラムス（根元から下へ）
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, calamusLen); ctx.stroke();
+
+    // 根元のけば（ダウン）— 薄めに
+    const tufts = 6 + (Math.random()*4|0);
+    ctx.globalAlpha = a*0.28;
+    ctx.lineWidth = Math.max(0.7, 0.9*DPR);
+    for(let i=0;i<tufts;i++){
+      const t = (i/(tufts-1))-0.5;
+      const ang = Math.PI*0.5 + t*Math.PI*0.6 + Math.sin(this.seed*5.3+i)*0.08;
+      const r1 = baseBulgeY*0.28, r2 = baseBulgeY*(0.45 + Math.random()*0.35);
+      const x1 = Math.cos(ang)*r1, y1 = Math.sin(ang)*r1;
+      const x2 = Math.cos(ang)*r2, y2 = Math.sin(ang)*r2;
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.quadraticCurveTo(x1,y1,x2,y2); ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
+/* =============== Spawning =============== */
+function spawnLeaves(n){
+  const H = cv.height / DPR, W = cv.width / DPR;
+  for(let i=0;i<n;i++){
+    const x=Math.random()*W, y=Math.random()*H;
+    const rot=(Math.random()-0.5)*Math.PI;
+    const life=(0.8 + Math.random()*1.4); // 元寿命（Leaf内で0.8倍）
+    Leaves.push(new Leaf(x,y,rot,life));
+  }
+}
+function spawnFeathers(n){
+  const H = cv.height / DPR, W = cv.width / DPR;
+  for(let i=0;i<n;i++){
+    const x=Math.random()*W, y=Math.random()*H; // ← 画面全体から出現
+    // 先端を“斜め下”へ：π（真下）± [0.12π, 0.20π]（真下は避ける）
+    const sign = Math.random()<0.5 ? -1 : 1;
+    const tilt = (0.12*Math.PI) + Math.random()*(0.08*Math.PI); // ≈21.6°〜36°
+    const rot = Math.PI + sign*tilt;
+    const life=(0.55 + Math.random()*0.9); // 元寿命（Feather内で0.8倍）
+    Feathers.push(new Feather(x,y,rot,life));
+  }
+}
+
+/* =============== Loop =============== */
+let last=performance.now()/1000;
+function loop(){
+  const now=performance.now()/1000; const dt=Math.min(0.05, now-last); last=now;
+
+  // 背景（白）
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,cv.width,cv.height);
+
+  // オーディオ解析
+  const lvl = rmsLevel();
+  const lowRaw  = bandEnergy(  60, 2000);   // 低〜下中域
+  const midRaw  = bandEnergy(2000, 4000);   // 中温域（強め反応）
+  const highRaw = bandEnergy(4000,12000);   // 高域
+
+  // スムージング
+  levelS   += (lvl    - levelS  )*sense.smooth;
+  lowS     += (lowRaw - lowS    )*0.25;
+  mid2k4kS += (midRaw - mid2k4kS)*0.30;
+  highS    += (highRaw- highS   )*0.25;
+
+  // スペクトルに応じた“黒さ”係数（0..1）
+  const eLow  = clamp(lowS    /255, 0, 1);
+  const eMid  = clamp(mid2k4kS/255, 0, 1);
+  const eHigh = clamp(highS   /255, 0, 1);
+  const midW   = eMid  * 1.6;
+  const otherW = eLow  * 0.9 + eHigh * 1.1;
+  const blackFactor = clamp( midW / (midW + otherW + 1e-6), 0, 1); // mid優位ほど黒く
+  const alphaTone = 0.2 + 0.8 * blackFactor; // 下限0.2で見失わない
+
+  // スポーン量（スライダー適用）— 葉っぱは40%減
+  const midSpawn = bandEnergy(300,3000);
+  const midS = (midSpawn/255);
+  const leavesN   = Math.floor(clamp(midS,0,1) * 12 * 0.6 * spawnMult); // ← 40%減
+  const feathersN = Math.floor(clamp(midS,0,1) *  7 *       spawnMult);
+
+  if (mode==='leaves'){ if(leavesN>0)   spawnLeaves(leavesN); }
+  else if (mode==='feathers'){ if(feathersN>0) spawnFeathers(feathersN); }
+  else {
+    if(leavesN>0)   spawnLeaves(Math.max(1, Math.floor(leavesN*0.6)));
+    if(feathersN>0) spawnFeathers(Math.max(1, Math.floor(feathersN*0.6)));
+  }
+
+  // 描画 & 破棄
+  for (let i=Leaves.length-1; i>=0; i--){
+    const l=Leaves[i]; l.update(dt); l.draw(alphaTone);
+    if (l.t>l.life) Leaves.splice(i,1);
+  }
+  for (let i=Feathers.length-1; i>=0; i--){
+    const f=Feathers[i]; f.update(dt); f.draw(alphaTone);
+    if (f.t>f.life) Feathers.splice(i,1);
+  }
+  if (Leaves.length+Feathers.length > MAX_ITEMS){
+    Leaves.splice(0, Math.floor(Leaves.length*0.3));
+    Feathers.splice(0, Math.floor(Feathers.length*0.3));
+  }
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* =============== tiny unlocks =============== */
+(function(){
+  addEventListener('touchend', ()=>audioCtx&&audioCtx.resume(), {once:true});
+  addEventListener('click',    ()=>audioCtx&&audioCtx.resume(), {once:true});
+})();
+</script>
+</body>
+</html>
