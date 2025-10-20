@@ -101,7 +101,7 @@
         <div class="chip" data-p="alice">アリス（花）</div>
         <div class="chip" data-p="minal">ミナル（歯車）</div>
         <div class="chip active" data-p="parfait">パルフェ（宝石×5）</div>
-        <div class="chip" data-p="chappy">チャッピー（⚪︎△◻︎）</div>
+        <div class="chip" data-p="chappy">チャッピー⚪︎△◻︎）</div>
         <div class="chip" data-p="ossan">おじさん（野菜）</div>
         <div class="chip" data-p="hoshi">ほし（☆）</div>
       </div>
@@ -635,18 +635,28 @@ function drawCosmos(x,y,r,a){
       case 'ruby': return drawRuby(p.x,p.y,r,p.hue,a);
       case 'sapphire': return drawSapphire(p.x,p.y,r,p.hue,a);
       case 'ydiamond': return drawYellowDiamond(p.x,p.y,r,p.hue,a);
+
+      // Alice floral
       case 'sakura': return drawSakura(p.x,p.y,r,a);
       case 'marguerite': return drawMarguerite(p.x,p.y,r,a);
       case 'cosmos': return drawCosmos(p.x,p.y,r,a);
       case 'clover3': return drawClover(p.x,p.y,r,a,3);
       case 'clover4': return drawClover(p.x,p.y,r,a,4);
-      case 'flower': return drawFlower(p.x,p.y,r,a);
+
+      // Minal / Chappy shapes
       case 'gear': return drawGear(p.x,p.y,r,a);
-      case 'geom': return drawGeom(p.x,p.y,r,a);
-      case 'vege': return drawVege(p.x,p.y,r,a);
+      case 'circle': return drawGeo(p.x,p.y,r,a,'circle');
+      case 'triangle': return drawGeo(p.x,p.y,r,a,'triangle');
+      case 'square': return drawGeo(p.x,p.y,r,a,'square');
+
+      // Ossan vegetables
+      case 'carrot': return drawCarrot(p.x,p.y,r,a);
+      case 'onion': return drawOnion(p.x,p.y,r,a);
+      case 'broccoli': return drawBroccoli(p.x,p.y,r,a);
+
       case 'star': return drawStar(p.x,p.y,r,a);
-      case 'dot': return renderParticle(p.x,p.y,r,a);
-      default: return renderParticle(p.x,p.y,r,a);
+      case 'dot': return drawDot(p.x,p.y,r,a);
+      default: return drawDot(p.x,p.y,r,a); // safe fallback
     }
   }
 
