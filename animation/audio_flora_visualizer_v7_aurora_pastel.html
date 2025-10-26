@@ -6,6 +6,10 @@
   <title>Audio Visualizer v6.3.1 – パステル＆オーロラ対応版</title>
   <!-- p5.js only for canvas/draw utils -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
+  <script>
+    function dbToGain(db){ return Math.pow(10, db/20); }
+    if (typeof window !== 'undefined' && typeof window.micBoostDb === 'undefined') { window.micBoostDb = 24; }
+  </script>
   <style>
     :root { color-scheme: dark; --glass: rgba(255,255,255,0.08); --line: rgba(255,255,255,0.16); }
     html, body { margin:0; padding:0; background:#0b0b0f; color:#eee; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans JP", sans-serif; }
@@ -55,8 +59,8 @@
           <option value="normal" selected>ふつう</option>
           <option value="high">敏感</option>
           <option value="ultra">超敏感(スマホ)</option>
-        </select>
-        <label>画面ON</label><button id="wake">OFF</button>
+        </select><label style="margin-left:8px">入力</label><select id="micDevice"></select> <button id="recal" style="margin-left:8px;margin-right:8px">再キャリブ</button><label style="margin-left:8px">MIC感度</label><input id="micBoost" type="range" min="-6" max="36" step="1" value="18" style="width:120px;">
+        <label>画面ON</label><button id="wake">OFF</button><label style="margin-left:8px">帯域</label><select id="profile"><option value="auto" selected>AUTO</option><option value="standard">標準</option><option value="vocal">ボーカル</option><option value="wide">広帯域</option></select>
       </div>
       <div class="row">
         <label>双葉/花 量</label>
@@ -87,14 +91,15 @@
         </select>
       </div>
     </details>
-    <span id="status" style="margin-left:8px; font-size:12px; opacity:.85;">準備中</span>
+    <span id="status" style="margin-right:8px" style="margin-left:8px; font-size:12px; opacity:.85;">準備中</span>
   </div>
 
   <!-- Mobile drawer -->
   <div id="backdrop"></div>
   <button id="fab">⚙️</button>
   <div id="edgeOpen" aria-hidden="true"></div>
-  <div id="panel" aria-modal="true" role="dialog">
+  <div id="thDbg" style="position:fixed;right:10px;bottom:10px;font:12px/1.2 sans-serif;color:#9fb0c3;opacity:0.85;pointer-events:none;z-index:9999"></div>
+<div id="panel" aria-modal="true" role="dialog">
     <div class="handle" id="handle"><div class="bar"></div></div>
     <div class="row" style="justify-content:space-between">
       <label class="pill" id="pickFileM" for="file"><span>📄</span><span>音声</span></label>
@@ -112,7 +117,7 @@
         <option value="high">敏感</option>
         <option value="ultra">超敏感(スマホ)</option>
       </select>
-      <label>画面ON</label><button id="wakeM">OFF</button>
+      <label>画面ON</label><button id="wakeM">OFF</button><label style="margin-left:8px">帯域</label><select id="profileM"><option value="auto" selected>AUTO</option><option value="standard">標準</option><option value="vocal">ボーカル</option><option value="wide">広帯域</option></select> <label style="margin-left:8px">入力</label><select id="micDeviceM"></select><label style="margin-left:8px">入力</label><select id="micDevice"></select> <button id="recal" style="margin-left:8px;margin-right:8px">再キャリブ</button><label style="margin-left:8px">MIC感度</label><input id="micBoostM" type="range" min="-6" max="36" step="1" value="18" style="width:100px;">
     </div>
     <h4>量の調整</h4>
     <div class="grid">
@@ -180,7 +185,7 @@
     async function ensureAudio(){
       if (!audioCtx){
         const AC = window.AudioContext || window.webkitAudioContext; audioCtx = new AC();
-        analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.85;
+        analyser = audioCtx.createAnalyser(); analyser.fftSize = 2048; analyser.minDecibels=-120; analyser.maxDecibels=-10; analyser.smoothingTimeConstant=0.65; analyser.smoothingTimeConstant = 0.85; analyser.minDecibels=-120; analyser.maxDecibels=-5;
         freqData = new Uint8Array(analyser.frequencyBinCount);
         timeData = new Uint8Array(analyser.fftSize);
         if (!mediaEl){ mediaEl = new Audio(); mediaEl.preload='auto'; mediaEl.crossOrigin='anonymous'; mediaEl.addEventListener('loadedmetadata', ()=>{ try{ sampleRate = mediaEl.mozSampleRate || mediaEl.webkitAudioDecodedByteCount || audioCtx.sampleRate; }catch(_){} }); }
@@ -212,9 +217,43 @@
     async function pauseFile(){ try{ mediaEl && mediaEl.pause(); const s=document.getElementById('status'); if(s) s.textContent='一時停止'; }catch(_){ } }
 
     async function useMic(){
-      await ensureAudio(); usingMic=true; fileLoaded=false; try{ mediaEl && mediaEl.pause(); }catch(_){}
-      const stream = await navigator.mediaDevices.getUserMedia({audio:true}); micStream = stream; if (!micSource){ micSource = audioCtx.createMediaStreamSource(stream); }
-      connectNode(micSource, false); const s=document.getElementById('status'); if(s) s.textContent='マイク入力中';
+      await ensureAudio();
+      try { await audioCtx.resume(); } catch(_){}
+      usingMic = true; fileLoaded = false; startMicCalibration(1200);
+      try { if (mediaEl) mediaEl.pause(); } catch(_){}
+
+      // Warn if not a secure context (HTTPS or localhost) — many desktop browsers block mic on file://
+      try {
+        const secure = (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+        if (!secure) {
+          const s = document.getElementById('status');
+          if (s) s.textContent = '⚠️ マイクは HTTPS / localhost でのみ有効になります';
+        }
+      } catch(_){}
+
+      // Request raw-ish mic (disable speech processing that gates music/ambient on desktops)
+      const constraints = { audio: { echoCancellation:false, noiseSuppression:false, autoGainControl:false,  ...(selectedMicDeviceId? {deviceId: {exact: selectedMicDeviceId}} : {}) } };
+
+      // Stop previous stream tracks if any
+      if (micStream) {
+        try { micStream.getTracks().forEach(t => t.stop()); } catch(_){}
+        micStream = null;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      micStream = stream;
+
+      // Always recreate the source from the latest stream (some desktops require this)
+      try { if (micSource) micSource.disconnect(); } catch(_){}
+      micSource = audioCtx.createMediaStreamSource(stream);
+      try{ if(micPreGain){ micPreGain.disconnect(); } }catch(_){}
+      micPreGain = audioCtx.createGain(); micPreGain.gain.value = dbToGain(micBoostDb);
+      micSource.connect(micPreGain);
+      // Route to analyser only (no monitor to avoid feedback); recorder path stays via destNode
+      connectNode(micPreGain, false);
+
+      const s = document.getElementById('status');
+      try { const label = (micStream.getAudioTracks()[0]||{}).label || ''; if (s) s.textContent = 'マイク入力中：' + label; } catch(_){ if (s) s.textContent = 'マイク入力中'; }
     }
 
     // ======= Analysis helpers =======
@@ -227,7 +266,48 @@
       analyser.getByteTimeDomainData(timeData); let sum=0; for (let i=0;i<timeData.length;i++){ const v=(timeData[i]-128)/128; sum += v*v; } return Math.sqrt(sum/timeData.length);
     }
 
-    // ======= Visual State & Drawing =======
+    
+// ======= MIC CALIB / PROFILES =======
+let noiseFloor = { lvl:0, plant:0, bfly:0, bass:0, ultra:0 };
+let _cal = { active:false, until:0, n:0, lvl:0, plant:0, bfly:0, bass:0, ultra:0 };
+const profile = { mode:'auto' }; // 'auto' | 'standard' | 'vocal' | 'wide'
+
+function startMicCalibration(ms=1000){
+  _cal = { active:true, until: (typeof millis==='function'? millis(): 0) + ms, n:0, lvl:0, plant:0, bfly:0, bass:0, ultra:0 };
+}
+
+function energyBand(low, high){
+  const nyq = audioCtx.sampleRate/2; const binHz = nyq / freqData.length;
+  let i0 = Math.max(0, Math.floor(low / binHz)); let i1 = Math.min(freqData.length-1, Math.ceil(high / binHz));
+  if (i1 <= i0) return 0;
+  let sum=0, mx=0;
+  for (let i=i0;i<=i1;i++){ const v=freqData[i]; sum += v; if (v>mx) mx=v; }
+  const avg = sum / (i1-i0+1);
+  return avg*0.4 + mx*0.6;
+}
+function computeBands(){
+  // Pick effective profile
+  let mode = profile.mode==='auto' ? (usingMic ? 'vocal' : 'standard') : profile.mode;
+  let plant, bfly, bass, ultra;
+  if (mode==='vocal'){         // PCマイクを想定：声を強調
+    plant = energyBand(120,1800);
+    bfly  = energyBand(1800,6000);
+    bass  = energyBand(40,150);
+    ultra = energyBand(6000,14000);
+  } else if (mode==='wide'){   // 広帯域：環境音や音楽向け
+    plant = energyBand(80,4000);
+    bfly  = energyBand(4000,12000);
+    bass  = energyBand(30,140);
+    ultra = energyBand(8000,16000);
+  } else {                     // standard（従来）
+    plant = energyBand(200,2000);
+    bfly  = energyBand(2000,8000);
+    bass  = energyBand(20,120);
+    ultra = energyBand(8000,16000);
+  }
+  return {plant, bfly, bass, ultra, modeUsed: mode};
+}
+// ======= Visual State & Drawing =======
     const plants=[], butterflies=[], dustStars=[], meteors=[], auroras=[];
     let baselineY, prevLevel=0, donCooldown=0, lastActiveMillis=0, silenceFade=0, toneHold=0;
     let NUM_BINS=36, BIN_W=0;
@@ -255,12 +335,17 @@
       $('meteorAmt').addEventListener('change', e=>amount.meteor=parseFloat(e.target.value));
       $('dustAmt').addEventListener('change', e=>amount.dust=parseFloat(e.target.value));
       $('wake').addEventListener('click', ()=>toggleWake($('wake')));
+      $('profile').addEventListener('change', e=>{ profile.mode=e.target.value; const s=document.getElementById('status'); if(s) s.textContent='帯域:'+profile.mode; });
+      const rb=$('recal'); if(rb){ rb.addEventListener('click', ()=>{ startMicCalibration(1200); const s=document.getElementById('status'); if(s) s.textContent='再キャリブ中…'; }); }
+      const micBoostInput=$('micBoost'); if(micBoostInput){ micBoostInput.addEventListener('input', e=>{ micBoostDb=parseFloat(e.target.value)||0; if(micPreGain) micPreGain.gain.value=dbToGain(micBoostDb); }); }
     }
 
     function bindDrawer(){
       const $=id=>document.getElementById(id); const panel=$('panel'), fab=$('fab'), backdrop=$('backdrop'), handle=$('handle'), edge=$('edgeOpen');
       const openPanel=(open)=>{ panel.classList.toggle('open', open); backdrop.style.display=open?'block':'none'; document.body.style.overflow=open?'hidden':''; };
-      fab.addEventListener('click', ()=>openPanel(true)); $('closeM').addEventListener('click', ()=>openPanel(false)); backdrop.addEventListener('click', ()=>openPanel(false)); edge.addEventListener('click', ()=>openPanel(true)); edge.addEventListener('touchstart', ()=>openPanel(true), {passive:true});
+      fab.addEventListener('click', ()=>openPanel(true)); $('closeM').addEventListener('click', ()=>openPanel(false));
+      $('profileM').addEventListener('change', e=>{ profile.mode=e.target.value; const s=document.getElementById('status'); if(s) s.textContent='帯域:'+profile.mode; });
+      const micBoostInputM=$('micBoostM'); if(micBoostInputM){ micBoostInputM.addEventListener('input', e=>{ micBoostDb=parseFloat(e.target.value)||0; if(micPreGain) micPreGain.gain.value=dbToGain(micBoostDb); }); } backdrop.addEventListener('click', ()=>openPanel(false)); edge.addEventListener('click', ()=>openPanel(true)); edge.addEventListener('touchstart', ()=>openPanel(true), {passive:true});
       let startY=null, lastY=null; const onStart=(e)=>{ startY=(e.touches?e.touches[0].clientY:e.clientY); lastY=startY; }; const onMove=(e)=>{ if(startY==null)return; const y=(e.touches?e.touches[0].clientY:e.clientY); lastY=y; const dy=y-startY; if(dy>0){ panel.style.bottom=Math.min(dy, window.innerHeight*0.6)*-1+'px'; } }; const onEnd=()=>{ if(startY==null)return; const dy=lastY-startY; panel.style.bottom=''; if(dy>60) openPanel(false); startY=null; lastY=null; };
       panel.addEventListener('touchstart', onStart, {passive:true}); panel.addEventListener('touchmove', onMove, {passive:true}); panel.addEventListener('touchend', onEnd); handle.addEventListener('mousedown', onStart); window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onEnd); window.addEventListener('keydown', (e)=>{ if(e.key==='Escape'&&panel.classList.contains('open')) openPanel(false); });
       const mapSel=(m,d)=>{ $(m).addEventListener('change', e=>{ $(d).value=e.target.value; $(d).dispatchEvent(new Event('change')); }); };
@@ -372,20 +457,92 @@
       }
     }
 
-    function draw(){
+    
+// ======= MIC DEVICE SELECT =======
+let selectedMicDeviceId = localStorage.getItem('micDeviceId') || null;
+
+async function refreshMicDevices(){
+  try{
+    // Need permission to see labels in many browsers
+    const tmp = await navigator.mediaDevices.getUserMedia({audio:true});
+    tmp.getTracks().forEach(t=>t.stop());
+  }catch(e){}
+  const devs = await navigator.mediaDevices.enumerateDevices();
+  const inputs = devs.filter(d=>d.kind==='audioinput');
+  function fill(sel){
+    if(!sel) return;
+    sel.innerHTML = '';
+    inputs.forEach(d=>{
+      const opt = document.createElement('option');
+      opt.value = d.deviceId || '';
+      opt.textContent = d.label || 'Audio Input';
+      sel.appendChild(opt);
+    });
+    // Restore previous selection
+    if (selectedMicDeviceId){
+      const found = Array.from(sel.options).some(o=>o.value===selectedMicDeviceId);
+      if(found) sel.value = selectedMicDeviceId;
+    }
+  }
+  fill(document.getElementById('micDevice'));
+  fill(document.getElementById('micDeviceM'));
+}
+
+navigator.mediaDevices && navigator.mediaDevices.addEventListener && navigator.mediaDevices.addEventListener('devicechange', refreshMicDevices);
+
+async function pickMicFromSelect(id){
+  const sel = document.getElementById(id);
+  if (!sel) return;
+  selectedMicDeviceId = sel.value || null;
+  localStorage.setItem('micDeviceId', selectedMicDeviceId || '');
+  // If mic is active, re-start with the chosen device
+  if(usingMic){
+    try { await useMic(); } catch(e){ console.warn(e); }
+  }
+}
+
+document.addEventListener('DOMContentLoaded', ()=>{
+  const d1 = document.getElementById('micDevice');
+  const d2 = document.getElementById('micDeviceM');
+  if (d1) d1.addEventListener('change', ()=>pickMicFromSelect('micDevice'));
+  if (d2) d2.addEventListener('change', ()=>pickMicFromSelect('micDeviceM'));
+  refreshMicDevices();
+});
+
+// ======= MIC METER UPDATE =======
+function updateMicMeter(v){
+  const f = document.getElementById('micMeterFill');
+  if(!f) return;
+  const pct = Math.max(0, Math.min(100, Math.round(v*100)));
+  f.style.width = pct + '%';
+}
+
+function draw(){
+      // adjusted inside
+
       background(11,11,15,255);
       // Baseline
       stroke(255); strokeWeight(3); line(0, height*0.85, width, height*0.85); noStroke();
 
       if (!analyser){ return; }
       analyser.getByteFrequencyData(freqData);
-      const level = rmsLevel() * sense.ampScale; const lvl = Math.min(Math.max(level,0),1);
-      const active = lvl > sense.gate || (!usingMic && mediaEl && !mediaEl.paused);
+      const level = rmsLevel() * sense.ampScale; updateMicMeter(level);
+      let lvl = Math.min(Math.max(level,0),1);
+      // mic calibration adjust
+      if (usingMic && !_cal.active){
+        const k=1.2; lvl = Math.max(0, lvl - noiseFloor.lvl*k);
+      }
+      const micGate = usingMic ? sense.gate*0.6 : sense.gate;
+      const active = lvl > micGate || (!usingMic && mediaEl && !mediaEl.paused);
       if (active) lastActiveMillis = millis(); const silentFor = millis()-lastActiveMillis; silenceFade = (silentFor>900) ? Math.min(1, silenceFade+0.03) : Math.max(0, silenceFade-0.05);
 
-      const plantBand = energyHz(200,2000); const bflyBand = energyHz(2000,8000); const bass = energyHz(20,120); const ultra = energyHz(8000,16000);
+      const B = computeBands();
+      let plantBand=B.plant, bflyBand=B.bfly, bass=B.bass, ultra=B.ultra;
       let sum=0; for(let i=0;i<freqData.length;i++) sum += (freqData[i]+1e-6); let ent=0; for(let i=0;i<freqData.length;i++){ const p=(freqData[i]+1e-6)/sum; ent += -p*Math.log(p); } ent = ent / Math.log(freqData.length);
-      E.level = lerp(E.level, lvl, 0.2); E.plantBand=lerp(E.plantBand, plantBand, 0.25); E.bflyBand=lerp(E.bflyBand, bflyBand, 0.25); E.bass=lerp(E.bass, bass, 0.25); E.ultra=lerp(E.ultra, ultra, 0.25); E.entropy=lerp(E.entropy, ent, 0.25);
+      E.level = lerp(E.level, lvl, 0.2); (function(){ const el=document.getElementById('thDbg'); if(el){ el.textContent = `PL:${(plantBand|0)} TH:${(TH.plant()|0)} BF:${(bflyBand|0)} TB:${(TH.bfly()|0)}`; } })(); if (usingMic && _cal.active){ _cal.lvl+=level; _cal.plant+=plantBand; _cal.bfly+=bflyBand; _cal.bass+=bass; _cal.ultra+=ultra; _cal.n++; if (typeof millis==='function' && millis()>_cal.until){ noiseFloor={ lvl:_cal.lvl/_cal.n, plant:_cal.plant/_cal.n, bfly:_cal.bfly/_cal.n, bass:_cal.bass/_cal.n, ultra:_cal.ultra/_cal.n }; _cal.active=false; const s=document.getElementById('status'); if(s) s.textContent='マイク調整完了'; }} E.plantBand=lerp(E.plantBand, plantBand, 0.25); E.bflyBand=lerp(E.bflyBand, bflyBand, 0.25); E.bass=lerp(E.bass, bass, 0.25); E.ultra=lerp(E.ultra, ultra, 0.25); E.entropy=lerp(E.entropy, ent, 0.25);
+
+      if (usingMic && !_cal.active){ const kP=0.8, kB=0.8, kBa=0.8, kU=0.8; plantBand=Math.max(0, plantBand - noiseFloor.plant*kP); bflyBand=Math.max(0, bflyBand - noiseFloor.bfly*kB); bass=Math.max(0, bass - noiseFloor.bass*kBa); ultra=Math.max(0, ultra - noiseFloor.ultra*kU); }
+      if (usingMic){ const tot = plantBand+bflyBand+bass+ultra+1e-6; const rP=plantBand/tot, rB=bflyBand/tot; plantBand *= (1+1.6*rP); bflyBand *= (1+1.3*rB); }
 
       // Dust (pastel)
       const dustCount = Math.floor(map(E.entropy, 0.6, 1.0, 0, 10*amount.dust, true)); for(let i=0;i<dustCount;i++) dustStars.push(new DustStar(random(width), random(height*0.05, height*0.65), E.entropy));
@@ -427,5 +584,9 @@
 
     function spawnPlantSmart(energy, fixedX=null){ const tries=12; for(let k=0;k<tries;k++){ const x=(fixedX==null)? random(width): fixedX+random(-6,6); const bi=xToBin(x); if(countPlantsInBin(bi)<3){ const type=(random()<0.55?'sprout':'flower'); plants.push(new Plant(Math.min(Math.max(x,0),width), type, energy)); break; } } }
   </script>
+
+<div id="micMeter" style="position:fixed;left:8px;bottom:8px;width:120px;height:6px;background:rgba(255,255,255,0.15);border-radius:3px;z-index:9999;pointer-events:none;">
+  <div id="micMeterFill" style="height:100%;width:0%;background:#6cf;border-radius:3px"></div>
+</div>
 </body>
 </html>
