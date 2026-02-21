@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+  <title>Hikaribana Spectral Parasol Visualizer v7.7.14 – 銀河の花畑（軽量スペクトル）</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.2/p5.min.js"></script>
+  <style>
+    :root{color-scheme:dark;--glass:rgba(255,255,255,.08);--line:rgba(255,255,255,.16);--txt:rgba(240,248,255,.95);--muted:rgba(220,235,255,.75)}
+    html,body{margin:0;padding:0;background:#000;overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Noto Sans JP",sans-serif}
+    #ui{position:fixed;left:calc(12px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));z-index:10;display:flex;gap:8px;flex-wrap:wrap;align-items:center;backdrop-filter:blur(10px);background:var(--glass);border:1px solid var(--line);border-radius:14px;padding:10px 12px;max-width:min(96vw,980px)}
+    #ui button,#ui label,#ui select,#ui summary{border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:var(--txt);padding:7px 10px;border-radius:12px;font-size:12px;cursor:pointer;user-select:none;line-height:1}
+    #ui button.active{outline:1px solid rgba(255,255,255,.65)}
+    #file{position:absolute;width:.1px;height:.1px;opacity:0;pointer-events:none}
+    #status{margin-left:6px;font-size:12px;color:var(--muted);white-space:nowrap}
+    details#adv{position:relative} details#adv summary{list-style:none} details#adv summary::-webkit-details-marker{display:none}
+    details#adv .drop{position:absolute;left:0;top:calc(100% + 10px);width:min(96vw,920px);max-height:min(72vh,720px);overflow:auto;padding:12px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(10,12,18,.78);backdrop-filter:blur(10px);box-shadow:0 10px 28px rgba(0,0,0,.35)}
+    details#adv:not([open]) .drop{display:none}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .seg{display:inline-flex;border:1px solid rgba(255,255,255,.14);border-radius:12px;overflow:hidden}
+    .seg button{border:0;border-right:1px solid rgba(255,255,255,.12);border-radius:0;padding:7px 10px;background:rgba(255,255,255,.06)}
+    .seg button:last-child{border-right:0}
+    .seg button.on{background:rgba(120,200,255,.18);outline:1px solid rgba(255,255,255,.25)}
+    .controls{margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}
+    .ctrl{display:grid;grid-template-columns:96px 1fr 70px;align-items:center;gap:10px;padding:8px 10px;border:1px solid rgba(255,255,255,.10);border-radius:12px;background:rgba(255,255,255,.05)}
+    .ctrl label{color:rgba(235,245,255,.90);font-size:12px}
+    .ctrl .val{text-align:right;color:rgba(235,245,255,.90);font-variant-numeric:tabular-nums;font-size:12px;opacity:.95}
+    input[type="range"]{width:100%}
+    #legend{position:fixed;right:calc(12px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));z-index:9;max-width:46ch;background:rgba(10,12,18,.55);border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:10px 12px;color:rgba(235,245,255,.88);font-size:12px;line-height:1.45}
+    #credit{position:fixed;left:calc(10px + env(safe-area-inset-left));bottom:calc(8px + env(safe-area-inset-bottom));z-index:9;font-size:11px;color:rgba(220,235,255,.55);text-shadow:0 1px 2px rgba(0,0,0,.45);user-select:none;pointer-events:none}
+    @media (max-width:860px){#legend{display:none} details#adv .drop{width:min(96vw,720px)} .controls{grid-template-columns:1fr} .ctrl{grid-template-columns:92px 1fr 64px}}
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <label for="file">音声ファイル</label><input id="file" type="file" accept="audio/*"/>
+    <button id="mic">マイク</button>
+    <button id="play">再生</button>
+    <button id="pause">一時停止</button>
+    <button id="record">録画開始</button>
+
+    <details id="adv">
+      <summary>⚙️ 調整</summary>
+      <div class="drop">
+        <div class="row">
+          <label>音量感度</label>
+          <select id="sense">
+            <option value="low">鈍感</option>
+            <option value="normal" selected>ふつう</option>
+            <option value="high">敏感</option>
+          </select>
+
+          <div class="row" style="gap:8px;">
+            <span style="color:rgba(235,245,255,.85);font-size:12px;">画面</span>
+            <div class="seg" id="hudSeg">
+              <button id="hudOn" class="on">ON</button>
+              <button id="hudOff">OFF</button>
+            </div>
+          </div>
+
+          <span id="status">準備中…</span>
+        </div>
+
+        <div class="controls">
+          <div class="ctrl"><label>花量</label><input id="plantAmt" type="range" min="0.40" max="2.00" step="0.01" value="0.40"/><span class="val" id="plantAmtVal">0.40</span></div>
+          <div class="ctrl"><label>花サイズ</label><input id="flowerSize" type="range" min="1.00" max="4.00" step="0.01" value="1.00"/><span class="val" id="flowerSizeVal">1.00</span></div>
+          <div class="ctrl"><label>花感度</label><input id="flowerSens" type="range" min="0.60" max="2.80" step="0.01" value="1.15"/><span class="val" id="flowerSensVal">1.15</span></div>
+          <div class="ctrl"><label>花フェード</label><input id="flowerTime" type="range" min="0.00" max="1.50" step="0.01" value="0.00"/><span class="val" id="flowerTimeVal">0.00</span></div>
+          <div class="ctrl"><label>スペクトル</label><input id="specBoost" type="range" min="0.80" max="2.40" step="0.01" value="1.35"/><span class="val" id="specBoostVal">1.35</span></div>
+          <div class="ctrl"><label>左右レンジ</label><input id="edgeBoost" type="range" min="1.00" max="1.70" step="0.01" value="1.18"/><span class="val" id="edgeBoostVal">1.18</span></div>
+          <div class="ctrl"><label>星ビート</label><input id="starBeat" type="range" min="0.10" max="1.20" step="0.01" value="0.50"/><span class="val" id="starBeatVal">0.50</span></div>
+          <div class="ctrl">
+            <label>傘</label>
+            <div class="seg" id="parasolSeg" style="width:100%;">
+              <button id="parasolOn" class="on" style="flex:1;">☂️ ON</button>
+              <button id="parasolOff" style="flex:1;">☂️ OFF</button>
+            </div>
+            <span class="val" id="parasolVal">ON</span>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <div class="row" style="gap:8px;">
+            <span style="color:rgba(235,245,255,.85);font-size:12px;">流星量</span>
+            <div class="seg" id="meteorSeg">
+              <button data-m="0.35">少なめ</button>
+              <button data-m="0.60" class="on">ふつう</button>
+              <button data-m="1.00">多め</button>
+            </div>
+          </div>
+
+          <div class="row" style="gap:8px;">
+            <span style="color:rgba(235,245,255,.85);font-size:12px;">星量</span>
+            <div class="seg" id="dustSeg">
+              <button data-d="0.65">少なめ</button>
+              <button data-d="1.00" class="on">ふつう</button>
+              <button data-d="1.35">多め</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div id="legend">
+    <div>🌼 ヒカリの花：帯域（擬似スペクトル）で出現／開花（軽量版）</div>
+    <div>✨ 星：常時うっすら瞬き、ビートで少しだけ持ち上がる</div>
+    <div>☄ 流星：ランダムに出現</div>
+    <div>☂ パラソル：ふわっと降下、スペクトルで色変化（OFF可）</div>
+    <div style="opacity:.85; margin-top:6px;">録画：⏺ → もう一度で保存（webm）</div>
+  </div>
+
+  <div id="credit">Powered by p5.js (MIT). Recording via Web Audio API &amp; MediaRecorder.</div>
+
+<script>
+let audioCtx, analyser, freqData, timeData;
+let analyserTap=null;
+let mediaEl=null, mediaElSrc=null;
+let micStream=null, micSource=null;
+let destNode=null, mediaRec=null, chunks=[];
+let usingMic=false, fileLoaded=false, pendingPlay=false;
+
+const sense={mode:'normal',ampScale:1.0,gate:0.008,peak:0.12,donDelta:0.08};
+
+async function ensureAudio(){
+  if(!audioCtx){
+    const AC=window.AudioContext||window.webkitAudioContext;
+    audioCtx=new AC();
+
+    analyser=audioCtx.createAnalyser();
+    analyser.fftSize=2048;
+    analyser.smoothingTimeConstant=0.85;
+
+    freqData=new Uint8Array(analyser.frequencyBinCount);
+    timeData=new Uint8Array(analyser.fftSize);
+
+    analyserTap=audioCtx.createGain();
+    analyserTap.gain.value=0.0;
+    analyser.connect(analyserTap);
+    analyserTap.connect(audioCtx.destination);
+
+    if(!mediaEl){
+      mediaEl=new Audio();
+      mediaEl.preload='auto';
+      mediaEl.crossOrigin='anonymous';
+      mediaEl.loop=false;
+    }
+    initBandBins();
+  }
+}
+
+function connectSourceToAnalyserAndDest(node, monitor=true){
+  try{node.disconnect();}catch(_){}
+  node.connect(analyser);
+  if(monitor) node.connect(audioCtx.destination);
+}
+
+async function useFile(file){
+  await ensureAudio();
+  usingMic=false; fileLoaded=false;
+  if(!mediaElSrc) mediaElSrc=audioCtx.createMediaElementSource(mediaEl);
+  connectSourceToAnalyserAndDest(mediaElSrc,true);
+
+  const url=URL.createObjectURL(file);
+  mediaEl.src=url; mediaEl.load();
+  mediaEl.oncanplay=()=>{fileLoaded=true; setStatus('読み込み完了'); if(pendingPlay){playFile(); pendingPlay=false;}};
+}
+
+async function playFile(){
+  if(!fileLoaded){pendingPlay=true; setStatus('読み込み中… → 自動再生'); return;}
+  try{await audioCtx.resume();}catch(_){}
+  try{await mediaEl.play(); setStatus('再生中');}catch(_){setStatus('再生ブロック: 画面タップ後にもう一度');}
+}
+function pauseFile(){try{mediaEl&&mediaEl.pause();}catch(_){} setStatus('一時停止');}
+
+async function useMic(){
+  await ensureAudio();
+  usingMic=true; fileLoaded=false;
+  try{mediaEl&&mediaEl.pause();}catch(_){}
+  const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  micStream=stream;
+  micSource=audioCtx.createMediaStreamSource(stream);
+  connectSourceToAnalyserAndDest(micSource,false);
+  setStatus('マイク入力中');
+}
+
+function setStatus(t){const s=document.getElementById('status'); if(s) s.textContent=t;}
+
+function smoothstep(e0,e1,x){const t=constrain((x-e0)/(e1-e0),0,1); return t*t*(3-2*t);}
+function energyHz(low,high){
+  const nyq=audioCtx.sampleRate/2, binHz=nyq/freqData.length;
+  let i0=Math.max(0,Math.floor(low/binHz)), i1=Math.min(freqData.length-1,Math.ceil(high/binHz));
+  if(i1<=i0) return 0;
+  let sum=0; for(let i=i0;i<=i1;i++) sum+=freqData[i];
+  return sum/(i1-i0+1);
+}
+function rmsLevel(){
+  analyser.getByteTimeDomainData(timeData);
+  let sum=0;
+  for(let i=0;i<timeData.length;i++){const v=(timeData[i]-128)/128; sum+=v*v;}
+  return Math.sqrt(sum/timeData.length);
+}
+
+/* ===== Bands (fast) ===== */
+const NB=64;
+const bandVal=new Float32Array(NB);
+const bandSmooth=new Float32Array(NB);
+const bandAvg=new Float32Array(NB);
+const bandB0=new Uint16Array(NB);
+const bandB1=new Uint16Array(NB);
+let bandsReady=false;
+
+function initBandBins(){
+  if(!audioCtx||!freqData) return;
+  const nyq=audioCtx.sampleRate/2, binHz=nyq/freqData.length;
+  const fMin=45, fMax=14000;
+  const edges=new Uint16Array(NB+1);
+  let prev=0;
+  for(let i=0;i<=NB;i++){
+    const t=i/NB;
+    const hz=fMin*Math.pow(fMax/fMin,t);
+    let b=Math.round(hz/binHz);
+    b=Math.max(0,Math.min(freqData.length-1,b));
+    if(i>0) b=Math.max(b,Math.min(freqData.length-1,prev+1));
+    edges[i]=b; prev=b;
+  }
+  edges[0]=0; edges[NB]=freqData.length-1;
+  for(let i=0;i<NB;i++){
+    bandB0[i]=edges[i];
+    bandB1[i]=Math.max(edges[i+1]-1,edges[i]);
+    bandAvg[i]=0.06;
+    bandVal[i]=0;
+    bandSmooth[i]=0;
+  }
+  bandsReady=true;
+}
+
+let zeroFrames=0;
+let spectrumBoost=1.35, edgeBoost=1.18;
+
+function updateBands(isActive){
+  if(!bandsReady) initBandBins();
+  if(!bandsReady) return;
+
+  let sig=0;
+  for(let i=0;i<64;i+=8) sig+=freqData[i];
+  if(sig===0 && isActive) zeroFrames++; else zeroFrames=0;
+
+  if(zeroFrames>=3){
+    for(let i=0;i<NB;i++) bandVal[i]*=0.985;
+  }else{
+    for(let i=0;i<NB;i++){
+      let sum=0,n=0;
+      const a0=bandB0[i], a1=bandB1[i];
+      for(let b=a0;b<=a1;b++){sum+=freqData[b]; n++;}
+      let a=(n?(sum/n):0)/255;
+
+      const t=i/(NB-1);
+      a*=lerp(1.22,0.94,t);              // low emphasis (helps left)
+      a=constrain(a*spectrumBoost,0,1);
+      a=Math.pow(a,0.80);
+
+      const edge=Math.pow(Math.abs(t-0.5)*2,1.15);
+      a*= (1 + (edgeBoost-1)*edge*0.85);
+      a=constrain(a,0,1);
+
+      bandVal[i]=a;
+      bandAvg[i]=lerp(bandAvg[i],a,0.02);
+    }
+  }
+
+  for(let i=0;i<NB;i++){
+    const a=bandVal[i];
+    const am1=(i>0)?bandVal[i-1]:a, ap1=(i<NB-1)?bandVal[i+1]:a;
+    const am2=(i>1)?bandVal[i-2]:am1, ap2=(i<NB-2)?bandVal[i+2]:ap1;
+    bandSmooth[i]=0.34*a + 0.22*(am1+ap1) + 0.11*(am2+ap2); // widen response
+  }
+}
+function bandAtX(x){
+  const t=constrain(x/width,0,0.999999);
+  const idx=Math.min(NB-1,Math.max(0,(t*NB)|0));
+  return bandSmooth[idx];
+}
+function bandRelAtX(x){
+  const t=constrain(x/width,0,0.999999);
+  const idx=Math.min(NB-1,Math.max(0,(t*NB)|0));
+  return bandSmooth[idx]/(bandAvg[idx]+0.02);
+}
+
+/* ===== Visual state ===== */
+const amount={plant:0.40, meteor:0.60, dust:1.00, parasol:0.35};
+let flowerSizeMul=1.0, flowerSensMul=1.15, flowerTimeMul=0.0, starBeatK=0.50;
+
+let blooms=[], stars=[], meteors=[], parasols=[], bg=null;
+let parasolEnabled=true;
+
+let midS=0, highS=0, midAvg=0.12, highAvg=0.12, starSpec=0;
+let beatPulse=0, beatCooldown=0, prevLevel=0, lastActiveMillis=0, silenceFade=0;
+let nextMeteorMs=1200, nextParasolMs=1200;
+
+/* ===== Background ===== */
+function buildBackground(){
+  bg=createGraphics(width,height);
+  bg.pixelDensity(1);
+  for(let y=0;y<height;y++){
+    const t=y/height;
+    bg.stroke(lerp(6,18,Math.pow(t,0.95)), lerp(10,66,Math.pow(t,1.05)), lerp(28,160,Math.pow(t,1.10)), 255);
+    bg.line(0,y,width,y);
+  }
+  bg.push(); bg.noStroke();
+  const dustN=Math.floor(2500*Math.min(1.7,(width*height)/(1280*720)));
+  for(let i=0;i<dustN;i++){
+    const tt=i/dustN;
+    const cx=lerp(-width*0.15,width*1.15,tt);
+    const cy=lerp(height*0.78,height*0.16,tt)+Math.sin(tt*3.2)*height*0.06;
+    const x=cx+random(-80,80), y=cy+random(-70,70);
+    const a=random(4,18), s=random(0.8,2.4);
+    const warm=random()<0.20;
+    if(warm) bg.fill(255,244,220,a*0.55); else bg.fill(215,235,255,a);
+    bg.circle(x,y,s);
+  }
+  bg.pop();
+  bg.push(); bg.noStroke();
+  for(let i=0;i<10;i++){
+    const y=lerp(height*0.68,height*0.98,i/9);
+    bg.fill(195,220,255,8);
+    bg.ellipse(width*0.5,y,width*1.25,height*0.20);
+  }
+  bg.pop();
+}
+
+/* ===== Seed ===== */
+function reseedStars(){
+  stars=[];
+  const base=520;
+  const scale=Math.min(1.9,Math.max(0.6,(width*height)/(1280*720)));
+  const n=Math.floor(base*scale*amount.dust);
+  for(let i=0;i<n;i++){
+    const x=random(width), y=random(height*0.02,height*0.76);
+    const size=random(0.6,2.4), baseA=random(85,220);
+    const tw=random(0.006,0.022), phase=random(TWO_PI);
+    const warm=random()<0.22;
+    const col=warm?[255,238,210]:[215,235,255];
+    const nseed=random(1000);
+    stars.push({x,y,size,baseA,tw,phase,col,nseed});
+  }
+}
+function reseedBlooms(){
+  blooms=[];
+  const base=Math.floor((width*0.22+90)*amount.plant);
+  const n=Math.max(90,Math.min(820,base));
+  for(let i=0;i<n;i++){
+    const d=Math.pow(random(),1.7);
+    const y=lerp(height*0.62,height*0.95,d);
+    const x=random(width);
+    const scale=lerp(0.45,1.25,d);
+    blooms.push({
+      x,y,d,scale,
+      petals:Math.floor(random(5,8)),
+      sway:random(0.006,0.018),
+      phase:random(TWO_PI),
+      baseR0:random(3.8,7.2)*scale,
+      tw:random(0.006,0.020),
+      twPhase:random(TWO_PI),
+      amp:0, magS:0, prevAmp:0,
+      jx:0,jy:0,jtx:0,jty:0,
+      bias:random(0.85,1.15)
+    });
+  }
+}
+
+/* ===== Color ===== */
+function hueFromX(x){return lerp(48,248,constrain(x/width,0,1));}
+function hsvToRgb(h,s,v){
+  h=((h%360)+360)%360; s=constrain(s,0,100)/100; v=constrain(v,0,100)/100;
+  const c=v*s, hh=h/60, x=c*(1-Math.abs(hh%2-1));
+  let r=0,g=0,b=0;
+  if(hh<1){r=c;g=x;} else if(hh<2){r=x;g=c;}
+  else if(hh<3){g=c;b=x;} else if(hh<4){g=x;b=c;}
+  else if(hh<5){r=x;b=c;} else {r=c;b=x;}
+  const m=v-c;
+  return [Math.round((r+m)*255),Math.round((g+m)*255),Math.round((b+m)*255)];
+}
+function easeOutCubic(x){return 1-Math.pow(1-x,3);}
+
+/* ===== Stars ===== */
+function drawStars(silence){
+  const spec=starSpec*(1-silence);
+  const beat=constrain(beatPulse*starBeatK*1.30,0,1)*(1-silence);
+  const beatLift=1+0.18*beat;
+  const specLift=0.28+0.62*spec;
+
+  noStroke();
+  const t=millis()*0.001;
+  for(const s of stars){
+    const tw1=0.5+0.5*Math.sin(t*(0.9+(s.tw||0.012)*120.0)+(s.phase||0));
+    const tw2=0.70+0.30*noise((s.nseed||0)+t*0.25);
+    const tw=(0.40+0.60*tw1)*tw2;
+
+    let a=(s.baseA||120)*(0.12+0.26*tw);
+    a+=(s.baseA||120)*(0.10+0.18*tw)*specLift;
+    a*=beatLift;
+    a=constrain(a,0,255);
+
+    const r=(s.size||1.4)*(0.92+0.20*tw)*(1+0.06*beat);
+    const col=s.col||[255,255,255];
+    fill(col[0],col[1],col[2],a);
+    circle(s.x,s.y,r);
+  }
+}
+
+/* ===== Flowers ===== */
+function drawPetalShape(w,l){
+  beginShape();
+  vertex(0,0);
+  bezierVertex(w*0.55,-l*0.18,w*0.55,-l*0.82,0,-l);
+  bezierVertex(-w*0.55,-l*0.82,-w*0.55,-l*0.18,0,0);
+  endShape(CLOSE);
+}
+function drawBloom(b,silence){
+  if((b.amp||0)<0.004 && (b.magS||0)<0.03) return;
+
+  const gate=constrain(b.amp||0,0,1);
+  const mag=constrain(b.magS||0,0,1);
+  const t=millis()*0.001;
+  const tw=0.62+0.38*Math.sin(t*(0.9+(b.tw||0.012)*120.0)+(b.twPhase||0));
+  const vis=gate*(0.55+0.45*tw);
+
+  const open=constrain((0.26+0.88*easeOutCubic(mag))*(0.70+0.30*gate)*(0.88+0.12*tw),0.18,1.05);
+  const sway=Math.sin(t*(0.7+b.sway*140.0)+b.phase)*0.12;
+
+  let h=hueFromX(b.x)+(mag-0.5)*22;
+  const sat=28+46*(0.25+0.75*mag);
+  const val=52+40*(0.25+0.75*mag);
+  const rgb=hsvToRgb(h,sat,val);
+  const core=[255,246,220];
+
+  const haze=(1-b.d)*0.55;
+  const quiet=0.35+0.65*(1-silence);
+  const baseAlpha=(255*vis)*(0.70+0.30*mag)*quiet*(1-haze*0.60);
+
+  push();
+  translate(b.x+(b.jx||0),b.y+(b.jy||0));
+  rotate(sway);
+
+  const r=(b.baseR0||0)*open*flowerSizeMul;
+  const pw=r*0.80, pl=r*1.35;
+
+  stroke(255,255,255,baseAlpha*0.035);
+  strokeWeight(1);
+  fill(rgb[0],rgb[1],rgb[2],baseAlpha);
+
+  for(let i=0;i<b.petals;i++){
+    const ang=(TWO_PI*i/b.petals)+b.phase*0.15;
+    push(); rotate(ang); translate(0,-r*0.15); drawPetalShape(pw,pl); pop();
+  }
+
+  blendMode(ADD);
+  noStroke();
+  const gA=baseAlpha*0.038;
+  fill(rgb[0],rgb[1],rgb[2],gA); circle(0,0,r*2.0);
+  fill(rgb[0],rgb[1],rgb[2],gA*0.55); circle(0,0,r*2.7);
+  blendMode(BLEND);
+
+  fill(core[0],core[1],core[2],baseAlpha*0.78); circle(0,0,r*0.78);
+  fill(255,250,235,baseAlpha*0.56); circle(0,0,r*0.42);
+
+  pop();
+}
+
+/* ===== Meteors & Parasols ===== */
+class Meteor{
+  constructor(x,y,vx,vy,life){this.x=x;this.y=y;this.vx=vx;this.vy=vy;this.life=0;this.maxLife=life;this.dead=false;this.trail=[];}
+  update(){this.life++;this.trail.push({x:this.x,y:this.y});if(this.trail.length>22)this.trail.shift();this.x+=this.vx;this.y+=this.vy;
+    if(this.life>this.maxLife||this.x<-80||this.x>width+80||this.y>height+80)this.dead=true;}
+  draw(silence){const alpha=240*(1-silence);noFill();
+    for(let i=0;i<this.trail.length-1;i++){const p1=this.trail[i],p2=this.trail[i+1];const a=alpha*(i/this.trail.length);
+      stroke(255,255,255,a);strokeWeight(map(i,0,this.trail.length-1,1,3.0));line(p1.x,p1.y,p2.x,p2.y);}
+    noStroke();}
+}
+function spawnMeteor(){
+  const dir=random([-1,1]);
+  const x=(dir>0?random(width*0.05,width*0.45):random(width*0.55,width*0.95));
+  const y=random(height*0.05,height*0.45);
+  const vx=dir*random(7.0,10.5), vy=random(5.8,9.2);
+  meteors.push(new Meteor(x,y,vx,vy,Math.floor(random(28,54))));
+  if(meteors.length>10) meteors.shift();
+}
+class Parasol{
+  constructor(){this.x=random(width);this.y=random(-120,-40);this.vx=random(-0.25,0.25);this.vy=random(0.75,1.55);
+    this.rot=random(-0.25,0.25);this.vr=random(-0.006,0.006);this.s=random(0.38,0.75);this.phase=random(TWO_PI);this.dead=false;}
+  update(){this.x+=this.vx+Math.sin(frameCount*0.01+this.phase)*0.12;this.y+=this.vy;this.rot+=this.vr;if(this.y>height+120)this.dead=true;}
+  draw(silence){
+    const amp=bandAtX(this.x);
+    let h=hueFromX(this.x)+(amp-0.5)*32;
+    const sat=26+48*(0.25+0.75*amp), val=58+38*(0.25+0.75*amp);
+    const rgb=hsvToRgb(h,sat,val);
+    const tFade=smoothstep(height*0.75,height*1.05,this.y);
+    const fade=1-0.85*tFade;
+    const a=(190*(0.45+0.55*amp))*(1-silence)*fade;
+
+    push(); translate(this.x,this.y); rotate(this.rot); scale(this.s);
+    noStroke(); fill(rgb[0],rgb[1],rgb[2],a); arc(0,0,70,44,PI,0,CHORD);
+    stroke(255,255,255,a*0.35); strokeWeight(1.2); noFill();
+    const scallops=7,w=70;
+    for(let i=0;i<scallops;i++){const x=lerp(-w*0.45,w*0.45,i/(scallops-1));arc(x,0,16,10,0,PI);}
+    stroke(255,255,255,a*0.22);
+    for(let i=0;i<5;i++){const x=lerp(-w*0.42,w*0.42,i/4);line(0,-18,x,0);}
+    stroke(255,255,255,a*0.45); strokeWeight(2); line(0,0,0,55);
+    noFill(); strokeWeight(2); beginShape(); vertex(0,55); bezierVertex(0,66,12,66,12,56); endShape();
+    blendMode(ADD); noStroke(); fill(rgb[0],rgb[1],rgb[2],a*0.20); arc(0,0,80,52,PI,0,CHORD); blendMode(BLEND);
+    pop();
+  }
+}
+function maybeSpawnRandoms(dtMs){
+  nextMeteorMs-=dtMs;
+  if(nextMeteorMs<=0){spawnMeteor(); nextMeteorMs=random(900,3600)/Math.max(0.35,amount.meteor);}
+  nextParasolMs-=dtMs;
+  if(parasolEnabled && nextParasolMs<=0 && parasols.length<24){
+    parasols.push(new Parasol());
+    nextParasolMs=random(650,2600)/Math.max(0.25,amount.parasol);
+  }
+}
+
+/* ===== Recording ===== */
+async function startRecording(){
+  await ensureAudio();
+  try{await audioCtx.resume();}catch(_){}
+  if(!destNode) destNode=audioCtx.createMediaStreamDestination();
+
+  const canvasStream=document.querySelector('canvas').captureStream(60);
+  const g=audioCtx.createGain(); g.gain.value=1.0;
+  try{ if(usingMic && micSource) micSource.connect(g); else if(mediaElSrc) mediaElSrc.connect(g); }catch(_){}
+  g.connect(destNode);
+
+  const mix=new MediaStream([...canvasStream.getVideoTracks(), ...destNode.stream.getAudioTracks()]);
+  chunks=[];
+  const mime=(window.MediaRecorder && MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus'))?'video/webm;codecs=vp9,opus':'video/webm';
+  mediaRec=new MediaRecorder(mix,{mimeType:mime});
+  mediaRec.ondataavailable=(e)=>{if(e.data && e.data.size>0) chunks.push(e.data);};
+  mediaRec.onstop=()=>{
+    const blob=new Blob(chunks,{type:mime});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download='hikaribana_visualizer.webm'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1200);
+    mediaRec=null;
+    const btn=document.getElementById('record');
+    if(btn){btn.textContent='録画開始';btn.classList.remove('active');}
+    setStatus('保存したよ…');
+  };
+  mediaRec.start();
+  const btn=document.getElementById('record');
+  if(btn){btn.textContent='■ 録画停止';btn.classList.add('active');}
+  setStatus('REC…');
+}
+function stopRecording(){ if(mediaRec && mediaRec.state!=='inactive') mediaRec.stop(); }
+
+/* ===== UI ===== */
+function bindUI(){
+  const $=(id)=>document.getElementById(id);
+  const setVal=(id,out,d=2)=>{const el=$(id),o=$(out); if(el && o) o.textContent=(+el.value).toFixed(d);};
+
+  flowerSizeMul=parseFloat($('flowerSize').value)||1;
+  amount.plant=parseFloat($('plantAmt').value)||0.40;
+  flowerSensMul=parseFloat($('flowerSens').value)||1.15;
+  flowerTimeMul=parseFloat($('flowerTime').value)||0.0;
+  starBeatK=parseFloat($('starBeat').value)||0.50;
+  spectrumBoost=parseFloat($('specBoost').value)||1.35;
+  edgeBoost=parseFloat($('edgeBoost').value)||1.18;
+
+  setVal('plantAmt','plantAmtVal'); setVal('flowerSize','flowerSizeVal'); setVal('flowerSens','flowerSensVal');
+  setVal('flowerTime','flowerTimeVal'); setVal('specBoost','specBoostVal'); setVal('edgeBoost','edgeBoostVal'); setVal('starBeat','starBeatVal');
+
+  $('file').addEventListener('change',async(e)=>{const f=e.target.files[0]; if(!f) return; await useFile(f);});
+  $('mic').addEventListener('click',async()=>{await useMic();});
+  $('play').addEventListener('click',async()=>{await playFile();});
+  $('pause').addEventListener('click',()=>{pauseFile();});
+  $('record').addEventListener('click',async()=>{if(!mediaRec) await startRecording(); else stopRecording();});
+  $('sense').addEventListener('change',(e)=>applySense(e.target.value));
+
+  $('plantAmt').addEventListener('input',(e)=>{amount.plant=parseFloat(e.target.value); setVal('plantAmt','plantAmtVal'); reseedBlooms();});
+  $('flowerSize').addEventListener('input',(e)=>{flowerSizeMul=parseFloat(e.target.value); setVal('flowerSize','flowerSizeVal');});
+  $('flowerSens').addEventListener('input',(e)=>{flowerSensMul=parseFloat(e.target.value); setVal('flowerSens','flowerSensVal');});
+  $('flowerTime').addEventListener('input',(e)=>{flowerTimeMul=parseFloat(e.target.value); setVal('flowerTime','flowerTimeVal');});
+  $('specBoost').addEventListener('input',(e)=>{spectrumBoost=parseFloat(e.target.value); setVal('specBoost','specBoostVal');});
+  $('edgeBoost').addEventListener('input',(e)=>{edgeBoost=parseFloat(e.target.value); setVal('edgeBoost','edgeBoostVal');});
+  $('starBeat').addEventListener('input',(e)=>{starBeatK=parseFloat(e.target.value); setVal('starBeat','starBeatVal');});
+
+  $('hudOn').addEventListener('click',()=>setHud(true));
+  $('hudOff').addEventListener('click',()=>setHud(false));
+
+  for(const btn of $('meteorSeg').querySelectorAll('button')){
+    btn.addEventListener('click',()=>{for(const b of $('meteorSeg').querySelectorAll('button')) b.classList.remove('on'); btn.classList.add('on'); amount.meteor=parseFloat(btn.dataset.m);});
+  }
+  for(const btn of $('dustSeg').querySelectorAll('button')){
+    btn.addEventListener('click',()=>{for(const b of $('dustSeg').querySelectorAll('button')) b.classList.remove('on'); btn.classList.add('on'); amount.dust=parseFloat(btn.dataset.d); reseedStars();});
+  }
+
+  $('parasolOn').addEventListener('click',()=>{parasolEnabled=true; $('parasolOn').classList.add('on'); $('parasolOff').classList.remove('on'); $('parasolVal').textContent='ON';});
+  $('parasolOff').addEventListener('click',()=>{parasolEnabled=false; $('parasolOff').classList.add('on'); $('parasolOn').classList.remove('on'); $('parasolVal').textContent='OFF'; parasols.length=0;});
+
+  document.addEventListener('pointerdown',(ev)=>{const adv=$('adv'); if(!adv||!adv.open) return; if(!adv.contains(ev.target)) adv.open=false;},{passive:true});
+  window.addEventListener('pointerdown',async()=>{try{await ensureAudio(); await audioCtx.resume();}catch(_){}},{once:true,passive:true});
+}
+
+function setHud(on){
+  const ui=document.getElementById('legend'); if(ui) ui.style.display=on?'block':'none';
+  document.getElementById('hudOn').classList.toggle('on',on);
+  document.getElementById('hudOff').classList.toggle('on',!on);
+}
+function applySense(mode){
+  sense.mode=mode;
+  if(mode==='low'){sense.ampScale=0.85;sense.gate=0.010;sense.peak=0.16;sense.donDelta=0.10;}
+  else if(mode==='high'){sense.ampScale=1.25;sense.gate=0.006;sense.peak=0.09;sense.donDelta=0.06;}
+  else {sense.ampScale=1.0;sense.gate=0.008;sense.peak=0.12;sense.donDelta=0.08;}
+}
+
+/* ===== p5 ===== */
+function setup(){
+  createCanvas(window.innerWidth, window.innerHeight);
+  pixelDensity(window.devicePixelRatio||1);
+  buildBackground(); bindUI(); applySense('normal');
+  reseedStars(); reseedBlooms();
+  nextMeteorMs=random(900,2800); nextParasolMs=random(700,2100);
+  setStatus('音声を入れると光るよ…');
+}
+function windowResized(){
+  resizeCanvas(window.innerWidth, window.innerHeight);
+  buildBackground(); reseedStars(); reseedBlooms();
+}
+function draw(){
+  if(bg) image(bg,0,0,width,height); else background(11,11,15,255);
+  if(blooms.length===0) reseedBlooms();
+
+  if(!analyser){
+    drawStars(0);
+    for(const b of blooms){b.amp=lerp(b.amp,0,0.08); b.magS=lerp(b.magS,0,0.08); drawBloom(b,0);}
+    if(parasolEnabled && parasols.length<6 && random()<0.006) parasols.push(new Parasol());
+    for(let i=parasols.length-1;i>=0;i--){parasols[i].update(); parasols[i].draw(0); if(parasols[i].dead) parasols.splice(i,1);}
+    return;
+  }
+
+  analyser.getByteFrequencyData(freqData);
+
+  const playing=(!usingMic && mediaEl && !mediaEl.paused && !mediaEl.ended);
+  const micOn=(usingMic && micStream && audioCtx && audioCtx.state==='running');
+  const isActive=playing||micOn;
+
+  updateBands(isActive);
+
+  // stars: spectrum + beat only
+  const mid=energyHz(250,2000)/255;
+  const high=energyHz(2500,12000)/255;
+  midS=lerp(midS,mid,0.10); highS=lerp(highS,high,0.10);
+  midAvg=Math.max(0.03,lerp(midAvg,midS,0.008));
+  highAvg=Math.max(0.03,lerp(highAvg,highS,0.008));
+  starSpec=smoothstep(0.78,1.38, 0.55*(highS/(highAvg+0.02)) + 0.45*(midS/(midAvg+0.02)) );
+
+  const lvl=constrain(rmsLevel()*sense.ampScale,0,1);
+  const active2=isActive||(lvl>sense.gate);
+  if(active2) lastActiveMillis=millis();
+  const silentFor=millis()-lastActiveMillis;
+  silenceFade=(!isActive && silentFor>900)?Math.min(1,silenceFade+0.03):Math.max(0,silenceFade-0.05);
+
+  const delta=Math.max(0,lvl-prevLevel); prevLevel=lvl;
+  const beatTh=sense.donDelta*0.85;
+  if(delta>beatTh && lvl>sense.gate*2 && beatCooldown<=0){beatPulse=1.0; beatCooldown=10;}
+  beatCooldown=Math.max(0,beatCooldown-1);
+  beatPulse*=0.88;
+
+  // flowers: spectrum-first, forgiving gates + floor to avoid full wipe
+  for(const b of blooms){
+    const band=constrain(bandAtX(b.x)*flowerSensMul*(b.bias||1),0,1);
+    const rel=constrain(bandRelAtX(b.x),0,4);
+    b.magS=lerp(b.magS||0,band,0.14);
+
+    const relGate=smoothstep(0.90,1.18,rel);
+    const absGate=smoothstep(0.010,0.090,band);
+    const floorGate=absGate*0.10;
+    const target=Math.max(relGate*absGate, floorGate);
+
+    const tMul=Math.max(0.35,flowerTimeMul);
+    const k=(target>b.amp)?(0.20/tMul):(0.10/tMul);
+    b.amp=lerp(b.amp,target,constrain(k,0.02,0.35));
+
+    const thr=0.12, prev=b.prevAmp||0;
+    if(b.amp>thr && prev<=thr){
+      const amt=10*(b.scale||1);
+      b.jtx=random(-amt,amt);
+      b.jty=random(-amt*0.55,amt*0.55);
+    }
+    b.prevAmp=b.amp;
+    b.jx=lerp(b.jx||0,b.jtx||0,0.12);
+    b.jy=lerp(b.jy||0,b.jty||0,0.12);
+  }
+
+  maybeSpawnRandoms(deltaTime);
+
+  drawStars(silenceFade);
+  for(const b of blooms) drawBloom(b,silenceFade);
+
+  for(let i=meteors.length-1;i>=0;i--){meteors[i].update(); meteors[i].draw(silenceFade); if(meteors[i].dead) meteors.splice(i,1);}
+
+  if(parasolEnabled){
+    for(let i=parasols.length-1;i>=0;i--){parasols[i].update(); parasols[i].draw(silenceFade); if(parasols[i].dead) parasols.splice(i,1);}
+  }else if(parasols.length){parasols.length=0;}
+}
+</script>
+</body>
+</html>
