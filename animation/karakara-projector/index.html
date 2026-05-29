@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Karakara Projector</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Projector sound toy</p>
+          <h1>Karakara Projector</h1>
+        </div>
+        <div class="status" aria-live="polite">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">Idle</span>
+        </div>
+      </header>
+
+      <main class="workbench">
+        <section class="viewport" aria-label="Projector visualization">
+          <canvas id="projectorCanvas"></canvas>
+          <div class="glow-plate" aria-hidden="true"></div>
+        </section>
+
+        <aside class="controls" aria-label="Projector controls">
+          <div class="transport">
+            <button class="power-button" id="powerButton" type="button" aria-pressed="false">
+              <span class="power-symbol">></span>
+              <span id="powerLabel">Start</span>
+            </button>
+            <button class="tool-button" id="jamButton" type="button">Jam</button>
+          </div>
+
+          <div class="readout">
+            <div>
+              <span class="readout-label">Speed</span>
+              <strong id="speedReadout">18 fps</strong>
+            </div>
+            <div>
+              <span class="readout-label">Pulse</span>
+              <strong id="pulseReadout">36 Hz</strong>
+            </div>
+          </div>
+
+          <div class="slider-group">
+            <label for="speedControl">
+              <span>Speed</span>
+              <output id="speedValue">18</output>
+            </label>
+            <input id="speedControl" type="range" min="8" max="36" value="18" step="0.1">
+          </div>
+
+          <div class="slider-group">
+            <label for="clatterControl">
+              <span>Clatter</span>
+              <output id="clatterValue">96</output>
+            </label>
+            <input id="clatterControl" type="range" min="0" max="100" value="96" step="1">
+          </div>
+
+          <div class="slider-group">
+            <label for="wearControl">
+              <span>Wear</span>
+              <output id="wearValue">52</output>
+            </label>
+            <input id="wearControl" type="range" min="0" max="100" value="52" step="1">
+          </div>
+
+          <div class="slider-group">
+            <label for="motorControl">
+              <span>Motor</span>
+              <output id="motorValue">18</output>
+            </label>
+            <input id="motorControl" type="range" min="0" max="100" value="18" step="1">
+          </div>
+
+          <div class="slider-group">
+            <label for="lampControl">
+              <span>Lamp</span>
+              <output id="lampValue">78</output>
+            </label>
+            <input id="lampControl" type="range" min="0" max="100" value="78" step="1">
+          </div>
+
+          <div class="slider-group">
+            <label for="roomControl">
+              <span>Room</span>
+              <output id="roomValue">4</output>
+            </label>
+            <input id="roomControl" type="range" min="0" max="100" value="4" step="1">
+          </div>
+
+          <div class="toggle-row">
+            <label class="switch">
+              <input id="syncControl" type="checkbox" checked>
+              <span></span>
+              Sync shutter
+            </label>
+            <label class="switch">
+              <input id="catchControl" type="checkbox" checked>
+              <span></span>
+              Random catches
+            </label>
+          </div>
+        </aside>
+      </main>
+    </div>
+  </body>
+</html>
