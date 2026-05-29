@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UFO Oscillator</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <h1>UFO Oscillator</h1>
+            <p>Adamski theremin beacon</p>
+          </div>
+        </div>
+        <button class="power-button" id="powerButton" type="button" aria-pressed="false">
+          <span class="power-light" aria-hidden="true"></span>
+          <span>Power</span>
+        </button>
+      </header>
+
+      <main class="synth-surface">
+        <section class="sky-stage" aria-label="UFO display">
+          <div class="readout-grid" aria-live="polite">
+            <div class="readout">
+              <span>Freq</span>
+              <strong id="freqReadout">520 Hz</strong>
+            </div>
+            <div class="readout">
+              <span>Mode</span>
+              <strong id="modeReadout">Theremin</strong>
+            </div>
+            <div class="readout">
+              <span>Beacon</span>
+              <strong id="beaconReadout">6.0 pps</strong>
+            </div>
+          </div>
+
+          <div class="ufo-wrap" aria-hidden="true">
+            <div class="ufo" id="ufoBody">
+              <div class="ufo-dome">
+                <div class="ufo-face">
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+              <div class="ufo-ring">
+                <i></i>
+                <i></i>
+                <i></i>
+                <i></i>
+                <i></i>
+              </div>
+              <div class="ufo-belly"></div>
+              <div class="ufo-beam" id="ufoBeam"></div>
+            </div>
+          </div>
+
+          <canvas id="scopeCanvas" class="scope-canvas" width="900" height="210" aria-label="oscilloscope"></canvas>
+        </section>
+
+        <section class="control-deck" aria-label="Synth controls">
+          <div class="mode-tabs" role="tablist" aria-label="Sound mode">
+            <button class="mode-tab is-active" type="button" role="tab" aria-selected="true" data-mode="theremin">Theremin</button>
+            <button class="mode-tab" type="button" role="tab" aria-selected="false" data-mode="beacon">Beacon</button>
+            <button class="mode-tab" type="button" role="tab" aria-selected="false" data-mode="triple">Triple</button>
+            <button class="mode-tab" type="button" role="tab" aria-selected="false" data-mode="hover">Hover</button>
+          </div>
+
+          <div class="knob-grid">
+            <div class="knob-control" data-param="pitch" data-min="90" data-max="1320" data-value="520" data-unit=" Hz" data-decimals="0" data-scale="log">
+              <label>Pitch</label>
+              <div class="knob" role="slider" tabindex="0" aria-label="Pitch" aria-valuemin="90" aria-valuemax="1320" aria-valuenow="520">
+                <span class="knob-track"></span>
+                <span class="knob-cap"><span class="knob-dot"></span></span>
+              </div>
+              <output>520 Hz</output>
+            </div>
+
+            <div class="knob-control" data-param="glide" data-min="0.02" data-max="1.2" data-value="0.34" data-unit=" s" data-decimals="2">
+              <label>Glide</label>
+              <div class="knob" role="slider" tabindex="0" aria-label="Glide" aria-valuemin="0.02" aria-valuemax="1.2" aria-valuenow="0.34">
+                <span class="knob-track"></span>
+                <span class="knob-cap"><span class="knob-dot"></span></span>
+              </div>
+              <output>0.34 s</output>
+            </div>
+
+            <div class="knob-control" data-param="vibrato" data-min="0" data-max="1" data-value="0.38" data-unit="%" data-decimals="0" data-percent="true">
+              <label>Vibrato</label>
+              <div class="knob" role="slider" tabindex="0" aria-label="Vibrato" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.38">
+                <span class="knob-track"></span>
+                <span class="knob-cap"><span class="knob-dot"></span></span>
+              </div>
+              <output>38%</output>
+            </div>
+
+            <div class="knob-control" data-param="beaconRate" data-min="1.5" data-max="13" data-value="6" data-unit=" pps" data-decimals="1">
+              <label>Beacon</label>
+              <div class="knob" role="slider" tabindex="0" aria-label="Beacon rate" aria-valuemin="1.5" aria-valuemax="13" aria-valuenow="6">
+                <span class="knob-track"></span>
+                <span class="knob-cap"><span class="knob-dot"></span></span>
+              </div>
+              <output>6.0 pps</output>
+            </div>
+
+            <div class="knob-control" data-param="echo" data-min="0" data-max="0.72" data-value="0.26" data-unit="%" data-decimals="0" data-percent="true">
+              <label>Echo</label>
+              <div class="knob" role="slider" tabindex="0" aria-label="Echo" aria-valuemin="0" aria-valuemax="0.72" aria-valuenow="0.26">
+                <span class="knob-track"></span>
+                <span class="knob-cap"><span class="knob-dot"></span></span>
+              </div>
+              <output>36%</output>
+            </div>
+          </div>
+
+          <div class="beam-pad" id="beamPad" role="slider" tabindex="0" aria-label="Beam pad" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+            <div class="beam-pad-label">
+              <span>Beam Pad</span>
+              <strong id="padReadout">orbit neutral</strong>
+            </div>
+            <span class="pad-reticle" id="padReticle"></span>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
