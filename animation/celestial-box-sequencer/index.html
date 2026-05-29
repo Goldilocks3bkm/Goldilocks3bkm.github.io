@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Celestial Box Planetarium</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <canvas id="constellation" class="constellation-layer" aria-label="Drawable constellation background"></canvas>
+
+    <main class="app-shell" aria-label="Celestial Box disc planetarium sequencer">
+      <div class="projection-layer">
+        <canvas id="projection" width="900" height="650" aria-label="Projected holographic starfield"></canvas>
+      </div>
+
+      <section class="stage" aria-label="Opened celestial music box">
+        <img
+          class="box-art"
+          src="./assets/celestial-box-generated.png"
+          alt="Opened antique celestial music box"
+        />
+
+        <div class="disc-wrap">
+          <canvas id="disc" width="680" height="680" aria-label="Punchable disc sequencer"></canvas>
+          <div class="comb-marker" aria-hidden="true"></div>
+        </div>
+      </section>
+
+      <section class="controls" aria-label="Sequencer controls">
+        <button id="play" class="primary" type="button">Play</button>
+        <button id="clear" type="button">Clear</button>
+        <button id="drawStars" type="button">Draw Stars</button>
+        <button id="eraseStars" type="button">Erase</button>
+        <button id="clearStars" type="button">All Clear</button>
+        <label class="tempo-control">
+          Tempo
+          <input id="tempo" type="range" min="42" max="150" value="82" />
+          <output id="tempoValue">82</output>
+        </label>
+        <label>
+          Sky
+          <select id="sky">
+            <option value="aurora" selected>Aurora</option>
+            <option value="nebula">Nebula</option>
+            <option value="zodiac">Zodiac</option>
+            <option value="deep">Deep Field</option>
+          </select>
+        </label>
+        <label>
+          Scale
+          <select id="scale">
+            <option value="major">Major</option>
+            <option value="minor">Minor</option>
+            <option value="pentatonic" selected>Pentatonic</option>
+            <option value="whole">Whole Tone</option>
+          </select>
+        </label>
+        <label class="size-control">
+          Size
+          <input id="skySize" type="range" min="72" max="200" value="100" />
+          <output id="skySizeValue">100</output>
+        </label>
+        <label class="harmony-control">
+          Harmony
+          <input id="harmony" type="range" min="0" max="100" value="58" />
+          <output id="harmonyValue">58</output>
+        </label>
+        <button id="seed" type="button">Seed</button>
+        <button id="exportMidi" type="button">MIDI</button>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
