@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark"><meta name="theme-color" content="#101923">
+  <meta name="description" content="音を聴き、糸をつまむ。WAV・MP3・FLACの再生とローカルWAV録音に対応した、ソルの音の織機。">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <title>余白の織機 — Sol's Resonance Loom</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip-link" href="#instrument">織機に移動</a>
+<div class="shell">
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="SOL / 余白の織機 ホーム"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M4 25C10 3 28 4 35 19C40 33 17 37 8 25C0 14 21 5 31 13"/><path d="M6 25C18 34 31 16 35 19"/></svg><span>SOL<span class="brand-sub">SMALL INSTRUMENTS, QUIET CURIOSITY</span></span></a>
+    <a href="#about" class="about-link">この織機について <span>↗</span></a>
+    <div class="local-seal"><i></i><span>LOCAL ONLY<small>音は、このブラウザーの中だけ。</small></span></div>
+  </header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow"><span>01 / SOUND & TOUCH</span>　ソルの音あそび</p><h1>余白の織機<span class="title-mark">.</span></h1><p class="lead">音をほどく。線にふれる。<br class="mobile-break">あなたの手で、ひとつの景色に。</p></div>
+      <div class="intro-note"><svg viewBox="0 0 100 42" aria-hidden="true"><path d="M2 24C25 0 33 42 51 20S79 6 98 23M2 27C22 13 33 34 51 24S81 14 98 27M2 30C25 25 35 29 51 29S82 24 98 30"/></svg><span>RESONANCE LOOM<br>AN ORIGINAL INSTRUMENT BY SOL</span></div>
+    </section>
+    <section class="instrument" id="instrument" tabindex="-1" aria-label="音の織機">
+      <div class="instrument-top"><span class="instrument-index">LOOM / 001</span><span class="state-label" id="scene-state">静かな糸 ・ 音を待っています</span><span class="mic-indicator" id="mic-indicator"><i></i>マイク OFF</span></div>
+      <div class="workbench">
+        <div class="visual-panel">
+          <div class="stage" id="stage-wrap">
+            <canvas id="loom" aria-label="音に反応する糸の織物。5つの結び目ボタンを使ってキーボードでも形を変えられます。" role="img"></canvas>
+            <div class="stage-corner top-left"><span class="crosshair">＋</span><span>THREAD FIELD<br><strong id="palette-name">薄明 / DAWN</strong></span></div>
+            <div class="stage-corner top-right"><span id="motion-label">ゆっくり、呼吸中</span><span class="tiny-star">✳</span></div>
+            <div class="anchor-layer" id="anchor-layer"></div>
+            <div class="touch-instruction" id="touch-instruction"><span class="hand-icon">↗</span>小さな結び目を、つまんで伸ばす。</div>
+            <div class="stage-bottom"><span>LOW ↔ HIGH / WOVEN IN LIGHT</span><button class="quiet-button" id="snapshot" title="織物だけをPNGで保存">景色を保存 <span>↗</span></button></div>
+          </div>
+          <div class="stage-tools">
+            <div class="shape-tools"><button id="pin" class="shape-button" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 4 8 0-2 5 4 5H6l4-5zM12 14v7"/></svg><span>形を留める</span><i></i></button><button id="pluck" class="shape-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17c4-15 6 15 10 0s6 0 8-9"/></svg>そっと弾く</button><button id="reset-shape" class="shape-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7v5h5M5 11a7 7 0 1 1 1 6"/></svg>整える</button></div>
+            <button class="motion-button" id="motion" aria-pressed="false"><span id="motion-icon">Ⅱ</span><span id="motion-text">動きを止める</span></button>
+          </div>
+          <p class="keyboard-note" id="keyboard-help">結び目に Tab で移動 → 矢印キーで伸ばす / Shift で大きく / Space ではじく / Home で戻す</p>
+        </div>
+        <aside class="texture-panel" aria-labelledby="texture-title">
+          <div class="panel-heading"><h2 id="texture-title">糸の仕立て</h2><span>01—03</span></div>
+          <p class="panel-intro">少し変えるだけで、<br>同じ音が、違う景色になる。</p>
+          <div class="cord-control" data-control="spread"><div class="cord-label"><label for="spread">ひらき</label><output id="spread-output" for="spread">58<span>%</span></output></div><div class="cord-surface"><svg viewBox="0 0 260 68" aria-hidden="true"><path class="cord-shadow" d="M12 48C56 48 54 15 116 26S192 55 248 16"/><path class="cord-path" d="M12 44C56 44 54 11 116 22S192 51 248 12"/><circle class="cord-bead-halo" r="13"/><circle class="cord-bead" r="7"/><path class="cord-tick" d="M12 52v6M248 21v6"/></svg><input id="spread" type="range" min="0" max="100" value="58" aria-label="糸のひらき" aria-describedby="spread-help"></div><div class="cord-ends"><span>しなやか</span><span>ふわり、ひろく</span></div><p class="control-help" id="spread-help">糸の幅と、低音のうねり。</p></div>
+          <div class="cord-control" data-control="decay"><div class="cord-label"><label for="decay">余韻</label><output id="decay-output" for="decay">65<span>%</span></output></div><div class="cord-surface"><svg viewBox="0 0 260 68" aria-hidden="true"><path class="cord-shadow" d="M12 25C61 4 76 59 129 42S201 14 248 29"/><path class="cord-path" d="M12 21C61 0 76 55 129 38S201 10 248 25"/><circle class="cord-bead-halo" r="13"/><circle class="cord-bead" r="7"/><path class="cord-tick" d="M12 32v6M248 36v6"/></svg><input id="decay" type="range" min="0" max="100" value="65" aria-label="音への反応の余韻" aria-describedby="decay-help"></div><div class="cord-ends"><span>すっと</span><span>ゆっくり、残す</span></div><p class="control-help" id="decay-help">音が去ったあとの、ほどける時間。</p></div>
+          <div class="cord-control" data-control="texture"><div class="cord-label"><label for="texture">きらめき</label><output id="texture-output" for="texture">48<span>%</span></output></div><div class="cord-surface"><svg viewBox="0 0 260 68" aria-hidden="true"><path class="cord-shadow" d="M12 39C56 56 79 11 130 29S206 52 248 14"/><path class="cord-path" d="M12 35C56 52 79 7 130 25S206 48 248 10"/><circle class="cord-bead-halo" r="13"/><circle class="cord-bead" r="7"/><path class="cord-tick" d="M12 46v6M248 20v6"/></svg><input id="texture" type="range" min="0" max="100" value="48" aria-label="糸のきらめき" aria-describedby="texture-help"></div><div class="cord-ends"><span>さらり</span><span>粒のある光</span></div><p class="control-help" id="texture-help">高音に添える、小さな光の粒。</p></div>
+          <fieldset class="palette-field"><legend>糸の色</legend><div class="palette-options"><button class="palette is-selected" data-palette="dawn" aria-pressed="true"><span class="swatch dawn"></span>薄明</button><button class="palette" data-palette="amber" aria-pressed="false"><span class="swatch amber"></span>琥珀</button><button class="palette" data-palette="tide" aria-pressed="false"><span class="swatch tide"></span>深海</button></div></fieldset>
+        </aside>
+      </div>
+      <section class="audio-dock" aria-label="音源と録音">
+        <div class="source-chooser"><label for="audio-file" class="file-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h6l2 3h8v11H4zM12 12v5M9.5 14.5h5"/></svg>音声をひらく<input id="audio-file" type="file" accept=".wav,.wave,.mp3,.flac,audio/wav,audio/x-wav,audio/mpeg,audio/flac,audio/x-flac"></label><button id="demo" class="text-button">音で試す <span>↗</span></button><p>WAV / MP3 / FLAC <span>※</span></p></div>
+        <div class="player"><div class="track-meta"><span class="track-dot"></span><strong id="track-name">まだ音を選んでいません</strong><button id="clear-source" class="clear-source" aria-label="選択した音を外す" hidden>×</button><span id="track-kind">NO SOURCE</span></div><div class="transport"><button id="play" class="play-button" disabled aria-label="再生"><svg id="play-symbol" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 10 7-10 7z"/></svg></button><div class="timeline-wrap"><div class="waveform" id="waveform" aria-hidden="true"></div><input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置" disabled></div><span class="time-readout"><span id="elapsed">00:00</span> / <span id="duration">00:00</span></span><button id="loop" class="icon-button" aria-label="繰り返し再生" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-3-3M19 16H5l3 3M19 8v5M5 16v-5"/></svg></button></div></div>
+        <div class="mic-controls"><button id="microphone" class="mic-button"><span class="record-core"></span><span id="mic-button-label">マイクで録音</span></button><span id="record-timer">許可するまで、使いません。</span></div>
+      </section>
+      <div class="audio-bottom"><label class="volume-label" for="volume"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 10 4 0 5-4v12l-5-4H4zM17 9q4 3 0 6"/></svg><span id="volume-text">音量 45%</span><input type="range" id="volume" min="0" max="100" value="45" aria-label="再生音量"></label><div class="signal-meters" aria-label="音の反応"><span>低音<i><b id="meter-bass"></b></i></span><span>中音<i><b id="meter-mid"></b></i></span><span>高音<i><b id="meter-treble"></b></i></span></div><span class="privacy-note">自動保存・音声送信なし <span>／</span> 録音はWAVで手元へ保存できます</span></div>
+      <div id="recording-result" class="recording-result" hidden><div><i></i><span>録音が、このタブに残っています。<small id="recording-detail"></small></span></div><div><button id="save-recording" class="small-button">WAVを保存 <span>↓</span></button><button id="discard-recording" class="quiet-button">録音を破棄</button></div></div>
+    </section>
+    <p class="status-message" id="status" role="status" aria-live="polite">まずは「音で試す」。無音のままでも、糸に触れて遊べます。</p>
+    <section class="about" id="about">
+      <div class="about-heading"><p class="eyebrow">HOW SOUND BECOMES THREAD</p><h2>聴くのではなく、<br>ふれてみる音。</h2><p>これは音を正確に測る道具ではなく、<br>音と手のあいだに生まれる、小さな織物。</p></div>
+      <div class="mapping"><article><span class="mapping-num">01</span><div><h3>低い音は、大きなうねりに。</h3><p>35–180 Hz のエネルギーが糸をひらき、180–2,400 Hz が細かな揺らぎを添えます。</p></div><svg viewBox="0 0 80 32" aria-hidden="true"><path d="M0 18Q20-9 40 17T80 17M0 22Q20-1 40 21T80 21"/></svg></article><article><span class="mapping-num">02</span><div><h3>高い音は、きめ細かな光に。</h3><p>2,400–12,000 Hz が糸のきらめきに。音量は明るさと呼吸の速さに、穏やかに反映します。</p></div><svg viewBox="0 0 80 32" aria-hidden="true"><path d="M0 19q5-10 10 0t10 0t10 0t10 0t10 0t10 0t10 0t10 0"/></svg></article><article><span class="mapping-num">03</span><div><h3>手で伸ばすと、あなただけの形に。</h3><p>結び目を離せば、しなやかに戻ります。「形を留める」でその形を保ち、音を重ねられます。</p></div><svg viewBox="0 0 80 32" aria-hidden="true"><path d="M0 22Q20 22 40 6Q60 22 80 22"/><circle cx="40" cy="6" r="3"/></svg></article></div>
+    </section>
+    <details class="details"><summary>音声・プライバシー・対応環境について <span>＋</span></summary><div class="details-grid"><section><h3>音は外へ送信しません</h3><p>音声の読込・解析・録音はブラウザー内だけで処理します。解析サービス、広告、外部フォント、アクセス解析は使っていません。設定や音声を永続保存しないため、再読込・タブを閉じると消えます。必要な録音は先にWAVを保存してください。</p><p>サイトを開く際の配信サーバーへの通常の通信は発生します。ファイルの内容やマイク音を送信する仕組みはありません。</p></section><section><h3>WAVを中心に、ブラウザーで再生</h3><p>PCM WAV を基本に、MP3・FLAC はブラウザーのデコーダーが対応している場合に再生できます。拡張子だけでは対応を保証できません。圧縮WAV等は非対応の場合があります。この試作はファイル150 MiBまで・展開後の音声150 MiBまでです。ファイルを全体デコードするため、長尺・高サンプルレート音源はメモリーを多く使います。圧縮形式の展開量はデコード後に判定するので、一時的なメモリー確保までは防げません。</p><p>マイクはHTTPSまたはlocalhost上で、許可操作後のみ起動。入力をスピーカーへ返しません。録音は最大5分、モノラル・16-bit PCM WAVで保存できます。タブを非表示にすると録音を終了します。</p></section><section><h3>動きと操作の配慮</h3><p>端末の「視差効果を減らす」等の設定では、はじめから静止します。「動きを再開」で任意に有効にできます。結び目と仕立てはキーボード操作にも対応。画面の動きを止めても、音声の再生・録音は止まりません。</p><p>最新のChrome / Edge / Firefox / Safari向けの試作です。実ブラウザーでの描画・音声再生・マイク録音・保存、実端末での操作は未検証です。構文・静的構造・ロジックの自動テストとは区別してください。対応や動作は環境ごとに異なります。BPM・楽器・感情の認識は行いません。</p></section><section><h3>つくりと出自</h3><p>Canvas 2D、Web Audio、AudioWorklet、Pointer Events を使った独自実装。外部ライブラリ・画像・音源の依存はありません。お試し音源もブラウザー内で生成するオリジナルです。第三者素材のライセンスは不要です。公開ライセンスは未選択です。このページの公開によって、MIT等の再配布ライセンスを付与するものではありません。</p><p>APIの参照：<a href="https://webaudio.github.io/web-audio-api/" target="_blank" rel="noopener noreferrer">Web Audio 仕様</a> / <a href="https://w3c.github.io/mediacapture-main/" target="_blank" rel="noopener noreferrer">Media Capture 仕様</a>。記事や作例コードの転載はしていません。</p></section></div></details>
+  </main>
+  <footer><span class="footer-brand">SOL <i>✳</i> 余白の織機</span><span>A LITTLE SOUND, A LITTLE WONDER.<br>LOCAL-FIRST PROTOTYPE / 2026</span></footer>
+</div>
+<dialog id="mic-dialog" aria-labelledby="mic-dialog-title"><form method="dialog"><button class="dialog-close" aria-label="閉じる" value="cancel">×</button><span class="dialog-symbol">◎</span><p class="eyebrow">YOUR MICROPHONE, YOUR CHOICE</p><h2 id="mic-dialog-title">この音を、糸にしてみる？</h2><p>次のボタンを押すと、ブラウザーがマイクの許可を尋ねます。許可した後、すぐに録音が始まります。</p><ul><li>マイク音は外へ送信せず、スピーカーにも返しません。</li><li>録音はこのタブだけに保持。最大5分、WAVで保存できます。</li><li>停止するか、タブが非表示になるとマイクを終了します。</li><li>再生中の音は一時停止します。ヘッドホンをおすすめします。</li></ul><p class="dialog-record-warning" id="mic-replace-warning" hidden>新しく録音すると、前の録音は置き換わります。必要なら先に保存してください。</p><div class="dialog-actions"><button value="cancel" class="small-button">いまはやめる</button><button id="confirm-mic" type="button" class="confirm-button"><span class="record-core"></span>許可して録音を開始</button></div></form></dialog>
+<noscript><p class="noscript">この織機には JavaScript が必要です。音声はローカル処理されます。</p></noscript>
+<script type="module" src="app.js"></script>
+</body></html>
