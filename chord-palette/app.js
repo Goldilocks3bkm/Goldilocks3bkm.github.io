@@ -1,11 +1,11 @@
 import {initialPaint,validPaint,addPaint,notePoint,soundAt,basePaints,samplePaint} from './paint-field.js';
 import {drawPaintField} from './paint-renderer.js';
-import {initialMix,normalizeMix,mixAt,soundFromMix,validMix,createPaletteVoice} from './palette-oscillator.js';
+import {initialMix,normalizeMix,mixAt,soundFromMix,validMix,createPaletteVoice} from './palette-oscillator.js?v=20261117-audio3';
 import {palettePresets,presetIdFor} from './palette-presets.js';
 import {drawCompanionSample} from './companion-sample.js';
 import {drawSolWorld,drawSolDrop} from './sol-visual.js';
 import {names,defaultColors,noteName,detectChord,validColors} from './music.js';
-const $=id=>document.getElementById(id);let colors=[...defaultColors];const active=new Map(),voices=new Map(),latched=new Set();let hold=false,ctx,master,analyser,audioSamples,audioError='',audioGeneration=0,sound=true;
+const $=id=>document.getElementById(id);let colors=[...defaultColors];const active=new Map(),voices=new Map(),latched=new Set();let hold=false,ctx,master,analyser,audioSamples,audioError='',audioGeneration=0,sound=true;let audioReadyMs=null,noteRequestAt=null,noteScheduleMs=null,noteAttackMs=null;
 try{const savedSound=localStorage.getItem('fwt-chord-sound-v1');if(savedSound==='0'||savedSound==='1')sound=savedSound==='1'}catch{}
 try{const saved=JSON.parse(localStorage.getItem('fwt-chord-colors-v1'));if(validColors(saved))colors=saved;if(localStorage.getItem('fwt-chord-night')==='1')document.body.classList.add('night')}catch{}
 const chars={sol:{title:'SOL · 世界球の芽',text:'水のしずくが光になって、<br>世界球の芽にそっと座る。',name:'ソル'},alice:{title:'ALICE · 花とクローバー',text:'音にふれると、<br>花とクローバーがひらく。',name:'アリス'},minar:{title:'MINAR · 歯車と星',text:'小さな歯車と星が、<br>音に合わせてまわりだす。',name:'ミナル'},teal:{title:'TEAL · 羽の軌跡',text:'軽やかな羽が、<br>音の軌跡を描いていく。',name:'ティール'},parfait:{title:'PARFAIT · 宝石の光',text:'ひと粒ずつ、<br>きらめく和音を集めよう。',name:'パルフェ'}};
@@ -22,6 +22,8 @@ function saveColors(){try{localStorage.setItem('fwt-chord-colors-v1',JSON.string
 function buildColors(){ $('colors').replaceChildren(); colors.forEach((c,i)=>{const label=document.createElement('label');label.className='swatch';label.style.background=c;label.dataset.pc=i;label.append(document.createTextNode(names[i]));const input=document.createElement('input');input.type='color';input.value=c;input.setAttribute('aria-label',names[i]+' の色');input.addEventListener('input',()=>{colors[i]=input.value;label.style.background=input.value;document.querySelectorAll(`[data-note]`).forEach(k=>k.style.setProperty('--note',colors[Number(k.dataset.note)%12]));rememberCustom();$('palette-preset').value='custom';saveColors()});label.append(input);$('colors').append(label)});}
 function updateAudioStatus(){
  const label=$('audio-status');if(!label)return;
+ const timing=$('audio-timing');if(timing){const ms=v=>Math.round(v)+' ms';timing.textContent='音声準備 '+(audioReadyMs===null?'未計測':ms(audioReadyMs))+' · 操作→発音予約 '+(noteScheduleMs===null?'未計測':ms(noteScheduleMs))+' · 音色 Attack '+(noteAttackMs===null?'—':ms(noteAttackMs))+' · 出力バッファ '+(ctx&&Number.isFinite(ctx.baseLatency)?ms(ctx.baseLatency*1000):'未取得');}
+
  if(!sound){label.textContent='音声 OFF';return}
  if(audioError){label.textContent=audioError;return}
  if(!ctx){label.textContent='鍵盤に触れると音声を開始';return}
@@ -32,15 +34,18 @@ function updateAudioStatus(){
 async function audioOn(){
  try{
  if(!ctx){const AC=window.AudioContext||window.webkitAudioContext;if(!AC){audioError='このブラウザでは音声を使えません';updateAudioStatus();return false}
- ctx=new AC();master=ctx.createGain();master.gain.value=Number($('volume').value);const limiter=ctx.createDynamicsCompressor();master.connect(limiter);
+ ctx=new AC({latencyHint:'interactive'});master=ctx.createGain();master.gain.value=Number($('volume').value);const limiter=ctx.createDynamicsCompressor();master.connect(limiter);
  if(ctx.createAnalyser){analyser=ctx.createAnalyser();analyser.fftSize=512;audioSamples=new Float32Array(analyser.fftSize);limiter.connect(analyser);analyser.connect(ctx.destination)}else limiter.connect(ctx.destination);
  ctx.onstatechange=updateAudioStatus;}
- audioError='';if(ctx.state!=='running')await ctx.resume();updateAudioStatus();return ctx.state===undefined||ctx.state==='running';
+ audioError='';if(ctx.state!=='running'){const started=performance.now();await ctx.resume();audioReadyMs=performance.now()-started;}updateAudioStatus();return ctx.state===undefined||ctx.state==='running';
  }catch(error){audioError='音声を開始できません · 音を OFF → ON にしてください';updateAudioStatus();return false}
 }
+// Prepare on user interaction only. No note is generated and saved mute is respected.
+function prepareAudioGesture(){if(sound&&(!ctx||ctx.state!=='running'))void audioOn();}
+for(const event of ['pointerdown','pointerup','touchend','keydown'])document.addEventListener(event,prepareAudioGesture,{capture:true,passive:true});
 let paint=initialPaint.map(p=>({...p})),paintUndo=[],paintIndex=0,selectedPigment=0,paintCursor={x:.5,y:.5};const notePoints=new Map();let latestPoint=null;
 try{const saved=JSON.parse(localStorage.getItem('fwt-chord-paint-v2'));if(validPaint(saved))paint=saved}catch{}
-function startVoice(n){if(!sound||!ctx||(ctx.state&&ctx.state!=='running')||voices.has(n))return;const point=notePoints.get(n)||notePoint(0);voices.set(n,createPaletteVoice(ctx,master,n,soundAt(paint,point)))}
+function startVoice(n){if(!sound||!ctx||(ctx.state&&ctx.state!=='running')||voices.has(n))return;const point=notePoints.get(n)||notePoint(0);const settings=soundAt(paint,point);voices.set(n,createPaletteVoice(ctx,master,n,settings));if(noteRequestAt!==null){noteScheduleMs=performance.now()-noteRequestAt;noteRequestAt=null;}noteAttackMs=settings.attack*1000}
 function stopVoice(n){const v=voices.get(n);if(!v)return;v.stop();voices.delete(n)}
 function showPaint(){drawPaintField($('paint-canvas'),paint,[...notePoints.values()],document.body.classList.contains('night'));const s=soundAt(paint,latestPoint||paintCursor);$('mix-readout').textContent=(latestPoint?'いま鳴っている絵の具':'絵の具を重ねて、鍵盤で聴こう')+' · '+s.color+' · '+Math.round(s.cutoff)+' Hz';$('paint-undo').disabled=!paintUndo.length;for(const [n,v] of voices)v.update(soundAt(paint,notePoints.get(n)||notePoint(0)))}
 function savePaint(){try{localStorage.setItem('fwt-chord-paint-v2',JSON.stringify(paint))}catch{$('status').textContent='絵の具はこの画面を開いている間だけ有効です。'}}
@@ -63,8 +68,8 @@ $('paint-replay').addEventListener('click',()=>{allOff();paintIndex=0;latestPoin
 function selectView(mix){if(mix){colors.forEach((color,i)=>{paintChoices[i+5].color=color;pots[i+5].children[0].style.background=color;});}$('sound-mixer').hidden=!mix;$('canvas').style.visibility=mix?'hidden':'';document.querySelector('.stage').classList.toggle('mixing',mix);$('view-mix').setAttribute('aria-pressed',String(mix));$('view-visual').setAttribute('aria-pressed',String(!mix));$('paint-sources').hidden=!mix;for(const id of ['colors','palette-preset','reset','storage'])$(id).hidden=mix;document.querySelector('.palette').classList.toggle('painting',mix);showPaint()}
 $('view-mix').addEventListener('click',()=>selectView(true));$('view-visual').addEventListener('click',()=>selectView(false));new ResizeObserver(showPaint).observe(field);
 function notesNow(){return [...new Set([...active.values(),...latched])].sort((a,b)=>a-b)}
-function refresh(){const notes=notesNow(),chord=detectChord(notes);for(const n of notePoints.keys())if(!notes.includes(n))notePoints.delete(n);for(const n of notes)if(!notePoints.has(n)){const point=notePoint(paintIndex++,paint);notePoints.set(n,point);latestPoint=point;}$('chord').textContent=chord.name;$('notes').textContent=notes.length?notes.map(noteName).join(' · '):'鍵盤を押してみよう';$('detail').textContent=chord.detail;$('stage-empty').style.opacity=notes.length?'0':'1';document.querySelectorAll('[data-note]').forEach(k=>{let on=notes.includes(+k.dataset.note);k.classList.toggle('active',on);k.setAttribute('aria-pressed',on)});document.querySelectorAll('.swatch').forEach(s=>s.classList.toggle('playing',notes.some(n=>n%12===+s.dataset.pc)));for(const n of voices.keys())if(!notes.includes(n))stopVoice(n);notes.forEach(startVoice);showPaint()}
-function down(id,n){if(active.has(id))return;const needsStart=sound&&(!ctx||ctx.state!=='running'),generation=audioGeneration;const ready=sound?audioOn():null;if(needsStart)ready.then(ok=>{if(!ok||!sound||generation!==audioGeneration)return;if(notesNow().includes(n))refresh();else{startVoice(n);setTimeout(()=>{if(!notesNow().includes(n))stopVoice(n)},120)}});if(hold){latched.has(n)?latched.delete(n):latched.add(n)}else active.set(id,n);burst(n);refresh()}
+function refresh(){const notes=notesNow(),chord=detectChord(notes);for(const n of notePoints.keys())if(!notes.includes(n))notePoints.delete(n);for(const n of notes)if(!notePoints.has(n)){const point=notePoint(paintIndex++,paint);notePoints.set(n,point);latestPoint=point;}for(const n of voices.keys())if(!notes.includes(n))stopVoice(n);notes.forEach(startVoice);$('chord').textContent=chord.name;$('notes').textContent=notes.length?notes.map(noteName).join(' · '):'鍵盤を押してみよう';$('detail').textContent=chord.detail;$('stage-empty').style.opacity=notes.length?'0':'1';document.querySelectorAll('[data-note]').forEach(k=>{let on=notes.includes(+k.dataset.note);k.classList.toggle('active',on);k.setAttribute('aria-pressed',on)});document.querySelectorAll('.swatch').forEach(s=>s.classList.toggle('playing',notes.some(n=>n%12===+s.dataset.pc)));showPaint()}
+function down(id,n){if(active.has(id))return;noteRequestAt=performance.now();const needsStart=sound&&(!ctx||ctx.state!=='running'),generation=audioGeneration;const ready=sound?audioOn():null;if(needsStart)ready.then(ok=>{if(!ok||!sound||generation!==audioGeneration)return;if(notesNow().includes(n))refresh();else{startVoice(n);setTimeout(()=>{if(!notesNow().includes(n))stopVoice(n)},120)}});if(hold){latched.has(n)?latched.delete(n):latched.add(n)}else active.set(id,n);burst(n);refresh()}
 function up(id){active.delete(id);refresh()}
 function allOff(){audioGeneration++;active.clear();latched.clear();refresh()}
 const whitePC=[0,2,4,5,7,9,11];const whites=[];for(let n=60;n<84;n++)if(whitePC.includes(n%12))whites.push(n);

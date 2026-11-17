@@ -20,6 +20,11 @@ export function createPaletteVoice(ctx,master,n,settings){
  const lfo=ctx.createOscillator(),depth=ctx.createGain();lfo.type='sine';lfo.connect(depth);for(const {osc} of oscillators)depth.connect(osc.detune);
  let released=false;
  const update=next=>{settings=next;const t=ctx.currentTime;for(let i=0;i<3;i++)oscillators[i].gain.gain.setTargetAtTime(settings.weights[i],t,.035);filter.frequency.setTargetAtTime(settings.cutoff,t,.035);filter.Q.setTargetAtTime(settings.q??.7,t,.035);lfo.frequency.setTargetAtTime(settings.rate,t,.035);depth.gain.setTargetAtTime(settings.vibrato,t,.035)};
- update(settings);envelope.gain.setValueAtTime(0,ctx.currentTime);envelope.gain.linearRampToValueAtTime(.13,ctx.currentTime+settings.attack);envelope.gain.linearRampToValueAtTime(.13*(settings.sustain??1),ctx.currentTime+settings.attack+(settings.decay??0));oscillators.forEach(v=>v.osc.start());lfo.start();
+ // Initial values are ready before the oscillators start. Only changes to a
+ // sounding voice need smoothing; ramping from zero here delays every note.
+ for(let i=0;i<3;i++)oscillators[i].gain.gain.setValueAtTime(settings.weights[i],ctx.currentTime);
+ filter.frequency.setValueAtTime(settings.cutoff,ctx.currentTime);filter.Q.setValueAtTime(settings.q??.7,ctx.currentTime);
+ lfo.frequency.setValueAtTime(settings.rate,ctx.currentTime);depth.gain.setValueAtTime(settings.vibrato,ctx.currentTime);
+ envelope.gain.setValueAtTime(0,ctx.currentTime);envelope.gain.linearRampToValueAtTime(.13,ctx.currentTime+settings.attack);envelope.gain.linearRampToValueAtTime(.13*(settings.sustain??1),ctx.currentTime+settings.attack+(settings.decay??0));oscillators.forEach(v=>v.osc.start());lfo.start();
  return {update,stop(){if(released)return;released=true;const t=ctx.currentTime,release=settings.release;if(envelope.gain.cancelAndHoldAtTime)envelope.gain.cancelAndHoldAtTime(t);else{envelope.gain.cancelScheduledValues(t);envelope.gain.setValueAtTime(envelope.gain.value,t)}envelope.gain.setTargetAtTime(0,t,Math.max(.02,release/4));const end=t+release+.1;for(const {osc} of oscillators)osc.stop(end);lfo.stop(end);lfo.onended=()=>{for(const {osc,gain} of oscillators){osc.disconnect();gain.disconnect()}lfo.disconnect();depth.disconnect();filter.disconnect();envelope.disconnect()}}};
 }
