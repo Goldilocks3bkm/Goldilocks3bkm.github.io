@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "status": "experimental",
+  "mapping": "linear weights; cutoff log-frequency interpolation",
+  "units": {
+    "cutoff": "Hz",
+    "attack": "seconds",
+    "release": "seconds",
+    "vibrato": "cents",
+    "rate": "Hz"
+  },
+  "initialMix": [
+    0.5,
+    0.2,
+    0.3
+  ],
+  "pigments": [
+    {
+      "id": "rose",
+      "name": "ばら",
+      "color": "#e6a0af",
+      "wave": "sine",
+      "cutoff": 850,
+      "attack": 0.035,
+      "release": 0.85,
+      "vibrato": 0,
+      "rate": 1.2
+    },
+    {
+      "id": "honey",
+      "name": "はちみつ",
+      "color": "#e8c878",
+      "wave": "sawtooth",
+      "cutoff": 4800,
+      "attack": 0.008,
+      "release": 0.18,
+      "vibrato": 2,
+      "rate": 4.5
+    },
+    {
+      "id": "sky",
+      "name": "そら",
+      "color": "#8ebdd5",
+      "wave": "triangle",
+      "cutoff": 1900,
+      "attack": 0.48,
+      "release": 1.6,
+      "vibrato": 15,
+      "rate": 2.4
+    }
+  ]
+}

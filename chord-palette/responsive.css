@@ -1,0 +1,26 @@
+/* v9: one final mobile layout authority. Never inherit full-span mobile
+   columns inside a three-column landscape grid. Content may scroll vertically. */
+@media (max-width:1100px) {
+ html{min-width:0}body{min-width:0;height:auto!important;min-height:100dvh;overflow:auto!important;padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}
+ .notebook{box-sizing:border-box;width:100%;max-width:100%;height:auto!important;min-height:0;padding:12px;display:block;overflow:visible}
+ header{flex-wrap:wrap;gap:8px;padding:0 0 12px;align-items:center}h1{font-size:clamp(23px,4vw,35px);white-space:normal}header p{font-size:13px}.sound-tools{max-width:none;flex-wrap:wrap;gap:6px;justify-content:flex-start}.sound-tools button,#theme{min-height:40px}.volume{order:0;flex-direction:row;align-items:center}.volume input{width:80px}
+ .workspace{width:100%;height:auto!important;min-height:0;display:grid;grid-template-columns:132px minmax(0,1fr) 116px;grid-template-areas:'palette stage character';gap:8px;align-items:stretch}
+ .workspace>.palette,.workspace>.stage,.workspace>.character{order:0;min-width:0;height:auto;grid-column:auto;grid-row:auto}
+ .workspace>.palette{grid-area:palette;padding:8px;display:block;min-height:0}
+ .workspace>.stage,.workspace>.stage.mixing{grid-area:stage;min-height:330px;overflow:hidden}
+ .workspace>.character{grid-area:character;min-height:0;display:flex;flex-direction:column;align-items:center;padding:8px 5px;overflow:visible}
+ .character .section-head,.character p,.character-line{display:none}.character select{width:100%;min-height:40px;padding:5px;margin:0;font-size:11px}.sprite-frame{width:100px;height:109px;flex:none;margin:12px auto}.sprite-frame svg{height:100%;width:100%;max-width:100%}#character-visible{min-height:40px;white-space:normal}
+ .palette.painting #paint-sources{display:block;width:100%;overflow:visible}#paint-pots{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}.paint-pot{min-width:0;width:100%;min-height:44px;padding:3px 1px;margin:0;gap:2px;font-size:9px;flex-direction:column}.paint-pot i{width:22px;height:20px;flex-shrink:0}.paint-instruction{display:block;font-size:10px;line-height:1.5;margin:3px 0 8px}.paint-size-label{display:block;width:100%;font-size:10px;margin-top:8px;line-height:1.5}.paint-size-label input[type=range]{width:100%;height:28px;display:block;margin:2px 0}.paint-size-label input[type=checkbox]{display:inline;width:18px;height:18px;vertical-align:middle}
+ .swatches{grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:none;gap:4px;margin:8px 0;flex:none}.swatch{height:38px;min-height:38px}#palette-preset{width:100%;min-height:36px;margin:4px 0;font-size:11px;padding:4px}.palette .quiet{width:100%;min-height:36px}
+ .stage-tabs{position:relative;top:auto;left:auto;padding:8px;gap:5px;flex-wrap:wrap}.stage-tabs button{min-height:38px;padding:5px 9px;font-size:11px}.stage-heading{top:62px}.stage.mixing #sound-mixer{padding:0 10px 10px}.mix-intro{font-size:11px;line-height:1.5}.mix-intro span{display:block;font-size:10px}.stage.mixing #mix-field{height:210px;min-height:170px;margin:8px 0}.paint-tools{gap:5px;margin:6px 0;flex-wrap:wrap}.paint-tools button{font-size:10px;min-height:38px;padding:5px 7px}.mix-note{display:block;font-size:9px;overflow-wrap:anywhere}#mix-readout{font-size:10px;overflow-wrap:anywhere}
+ .readout{padding:12px 2px;min-height:0;gap:10px;flex-wrap:wrap;overflow:visible}.readout strong{font-size:25px;min-width:80px}.notes-wrap{min-width:0;max-height:none;overflow:visible;flex:1}#notes{font-size:12px;overflow-wrap:anywhere}#detail{font-size:10px}.play-tools{width:auto;flex-wrap:wrap;gap:5px}.play-tools button{min-height:40px}
+ .keyboard-scroll{width:100%;height:126px;min-height:126px;padding:2px 0 6px;overflow-x:auto;overflow-y:hidden;margin-top:0}.keyboard{height:114px;min-width:560px;width:100%}.key.black{height:65%}.key{font-size:10px}.key.active::after{bottom:23px}footer{display:block;padding-top:8px}
+}
+/* Narrow portrait: paint swatches stay together above the field. The character
+   becomes a compact row rather than stealing half of the paint canvas width. */
+@media (max-width:600px) and (orientation:portrait), (max-width:480px) {
+ .notebook{padding:10px}.workspace{grid-template-columns:minmax(0,1fr);grid-template-areas:'palette' 'stage' 'character'}
+ .workspace>.stage,.workspace>.stage.mixing{min-height:310px}.workspace>.character{flex-direction:row;justify-content:space-between;gap:8px;padding:7px;align-items:center}.character select{width:100px;flex:0 1 100px}.sprite-frame{width:65px;height:71px;margin:0;flex:0 0 65px}#character-visible{flex:1;margin:0;font-size:10px;max-width:140px}
+ #paint-pots{grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}.paint-pot{font-size:10px;min-height:44px}.paint-instruction{margin:0 0 6px}.paint-size-label{margin-top:4px}.paint-size-label input[type=range]{display:inline-block;width:110px;vertical-align:middle;margin-left:8px}.swatches{grid-template-columns:repeat(6,minmax(0,1fr))}.palette .section-head{display:none}
+ .stage.mixing #mix-field{height:205px}.sound-tools{width:100%;justify-content:space-between}.sound-tools button{padding:5px 8px}.volume input{width:70px}.play-tools{width:100%;justify-content:flex-end}
+}

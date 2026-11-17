@@ -1,0 +1,98 @@
+:root{--paper:#f6f0e3;--panel:#fffaf0;--ink:#235a80;--muted:#7b929e;--line:#bdd2d8;--blue:#5b9db9;--key:#fffdf6;--dark:#283844}*{box-sizing:border-box}body{margin:0;background:#e2e5df;color:var(--ink);font-family:ui-rounded,'Hiragino Maru Gothic ProN','Yu Gothic',system-ui,sans-serif;padding:32px 20px}.notebook{max-width:1180px;margin:auto;border:1px solid #c8c6b8;border-radius:13px;background:repeating-linear-gradient(transparent 0 27px,#9ebfc71f 27px 28px),var(--paper);box-shadow:0 20px 60px #31495a13;padding:32px 30px 18px;position:relative;overflow:hidden}.notebook:before{content:'';position:absolute;top:0;bottom:0;left:17px;border-left:1px solid #dfaaa64f}header{display:flex;justify-content:space-between;align-items:center;padding:0 5px 27px;gap:20px}h1{font-family:Georgia,serif;font-weight:normal;font-size:43px;letter-spacing:-1.5px;margin:4px 0}h1 .title-dot{color:#d5a974}header p{font-family:Georgia,serif;font-style:italic;font-size:16px;margin:0;color:var(--muted)}.eyebrow{font-size:9px;letter-spacing:2px;font-weight:700;color:var(--muted)}button,select,input{font:inherit}button,select{border:1px solid var(--line);border-radius:8px;color:var(--ink);background:var(--panel);padding:9px 13px;cursor:pointer}button:hover,select:hover{border-color:var(--blue)}button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid #dbb569;outline-offset:3px}button[aria-pressed=true]{background:var(--ink);color:var(--paper)}.sound-tools{display:flex;gap:12px;align-items:center}.volume{display:flex;flex-direction:column;font-size:10px;gap:7px;color:var(--muted)}input[type=range]{width:85px;accent-color:var(--blue)}#theme{font-size:21px;padding:4px 12px}.workspace{display:grid;grid-template-columns:170px minmax(0,1fr) 190px;gap:14px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-height:320px}.palette,.character{padding:15px}.section-head{display:flex;align-items:baseline;justify-content:space-between;gap:5px}h2{font-family:Georgia,serif;font-size:17px;font-weight:normal;margin:0}.section-head span{font-size:9px;color:var(--muted)}.hint,.tiny{font-size:10px;line-height:1.6;color:var(--muted)}.swatches{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:16px 0}.swatch{position:relative;height:36px;border-radius:7px;box-shadow:inset 0 0 0 1px #0000000c;display:grid;place-items:center;font-size:12px;font-weight:600;color:#273744;overflow:hidden}.swatch input{opacity:0;position:absolute;inset:0;width:100%;height:100%;cursor:pointer}.swatch:focus-within{outline:3px solid var(--ink)}.swatch.playing{box-shadow:0 0 0 3px var(--ink);transform:translateY(-2px)}.quiet{font-size:10px;padding:7px;width:100%;background:transparent}.tiny{font-size:9px}.stage{position:relative;overflow:hidden;background:radial-gradient(ellipse at center,#ffffffaa,transparent 65%),var(--panel)}canvas{width:100%;height:100%;position:absolute;inset:0}.stage-heading{position:absolute;left:18px;right:18px;top:18px;display:flex;justify-content:space-between;gap:8px;font-size:9px;letter-spacing:1.2px;color:var(--muted)}.live-dot{color:#8aa991;font-size:8px;white-space:nowrap}#stage-empty{position:absolute;inset:48% 0 auto;text-align:center;font-family:Georgia,'Yu Mincho',serif;font-size:13px;letter-spacing:2px;color:var(--muted);pointer-events:none;transition:opacity .4s}.stage-foot{position:absolute;bottom:16px;left:0;right:0;text-align:center;font-size:8px;letter-spacing:3px;color:var(--muted)}.character{text-align:center}.character select{width:100%;margin:12px 0 0;font-size:12px}.sprite-frame{width:150px;height:162.5px;margin:7px auto 0}.sprite-frame svg{width:100%;height:100%;overflow:hidden}.character p{font-size:10px;line-height:1.8;color:var(--muted);margin:4px 0 8px}.character-line{display:block;width:26px;height:2px;background:#c7a571;margin:auto}.readout{display:flex;align-items:center;gap:30px;padding:24px 10px 19px;min-height:100px}.readout strong{display:block;font-family:Georgia,serif;font-size:32px;font-weight:normal;min-width:110px;margin-top:2px}.notes-wrap{flex:1}#notes{font-size:15px;letter-spacing:1px}#detail{font-size:10px;color:var(--muted)}.play-tools{display:flex;gap:8px;font-size:11px}.keyboard-scroll{overflow:auto;padding:2px 0 5px}.keyboard{position:relative;height:157px;min-width:560px;display:flex;touch-action:none;user-select:none}.key{padding:0;position:relative;flex:1;border-radius:0 0 6px 6px;background:var(--key);border:1px solid #a6b8bf;box-shadow:0 4px 0 #ced4ce;display:flex;align-items:flex-end;justify-content:center;padding-bottom:12px;font-size:11px;touch-action:none;color:var(--muted)}.key.black{position:absolute;z-index:2;top:0;height:97px;width:4.1%;background:var(--dark);border-color:#14252d;box-shadow:0 3px 0 #17262e;color:#c0cbd0;font-size:9px;padding-bottom:9px}.key.active{background:var(--note);color:#263c48;box-shadow:0 1px 0 #8ba0ab;transform:translateY(2px)}footer{display:flex;justify-content:space-between;gap:15px;font-size:9px;color:var(--muted);padding-top:14px;line-height:1.8}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}body.night{--paper:#182631;--panel:#20313e;--ink:#c8e3ed;--muted:#96aebb;--line:#405d6e;--blue:#87bdcf;--key:#e7ece9;--dark:#111e27;background:#0f1922}body.night .notebook{border-color:#40515f}body.night .stage{background:radial-gradient(ellipse at center,#32506155,transparent 65%),var(--panel)}@media(max-width:760px){body{padding:12px 8px}.notebook{padding:23px 16px 16px}.notebook:before{left:7px}header{padding-bottom:20px;align-items:flex-start;gap:10px}h1{font-size:31px}.eyebrow{font-size:7px;letter-spacing:1.3px}.sound-tools{gap:5px;flex-wrap:wrap;justify-content:flex-end;max-width:140px}.sound-tools button{font-size:11px;padding:7px}.volume{order:3;flex-direction:row;align-items:center}.workspace{grid-template-columns:minmax(0,1fr) 132px;gap:9px}.palette{grid-column:1/-1;min-height:0;order:3;padding:12px}.swatches{grid-template-columns:repeat(12,1fr);gap:5px;margin:10px 0}.swatch{height:31px;font-size:10px}.palette .hint,.palette .tiny{display:none}.palette .quiet{width:auto;font-size:9px}.stage,.character{min-height:270px}.character{padding:12px 7px}.character .section-head span{display:none}.sprite-frame{width:116px;height:126px}.character p{font-size:9px}.stage-heading{left:10px;right:10px;font-size:7px}.live-dot{display:none}#stage-empty{font-size:10px;letter-spacing:0;padding:0 10px}.stage-foot{font-size:6px;letter-spacing:1px}.readout{padding:18px 3px;gap:12px;flex-wrap:wrap}.readout strong{font-size:27px;min-width:85px}.notes-wrap{min-width:140px}.play-tools{width:100%;justify-content:flex-end}.keyboard{height:140px}.key.black{height:88px}footer{display:block;font-size:8px}footer span{display:block}}@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* Compact landscape instrument: all three panels and both keyboard octaves
+   remain together. dvh follows mobile browser chrome; safe areas protect
+   notches. Very short/zoomed viewports may scroll instead of clipping controls. */
+@media (orientation:landscape) and (max-height:600px) and (max-width:1100px){
+ body{padding:max(4px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(4px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left))}
+ .notebook{height:calc(100vh - 8px);height:calc(100dvh - max(4px,env(safe-area-inset-top)) - max(4px,env(safe-area-inset-bottom)));min-height:300px;max-width:none;padding:7px 10px;display:grid;grid-template-rows:34px minmax(116px,1fr) 46px clamp(84px,25dvh,128px);gap:5px;overflow:visible}
+ .notebook:before{left:4px}
+ header{padding:0 2px;gap:10px;align-items:center;min-width:0}
+ header .eyebrow,header p{display:none}
+ h1{font-size:25px;letter-spacing:-.8px;margin:0;white-space:nowrap}
+ .sound-tools{max-width:none;flex-wrap:nowrap;gap:7px;align-items:center}
+ .sound-tools button{font-size:11px;padding:6px 9px;min-height:30px}
+ .volume{order:0;flex-direction:row;align-items:center;gap:5px;font-size:9px}
+ input[type=range]{width:70px}
+ #theme{font-size:18px;padding:2px 9px}
+ .workspace{grid-template-columns:minmax(140px,23%) minmax(0,1fr) minmax(108px,18%);gap:7px;min-height:0}
+ .panel{min-height:0;height:100%;min-width:0}
+ .character{order:2;padding:5px 7px;display:flex;flex-direction:column;align-items:center;overflow:hidden}
+ .character .section-head,.character p,.character-line{display:none}
+ .character select{margin:0;font-size:11px;padding:4px 6px;min-height:28px;flex-shrink:0}
+ .sprite-frame{flex:1;min-height:0;width:100%;height:auto;margin:2px auto 0;display:flex;justify-content:center}
+ .sprite-frame svg{width:auto;max-width:100%;height:100%;aspect-ratio:192/208}
+ .stage{order:1;min-height:0}
+ .stage-heading{top:8px;left:9px;right:9px;font-size:8px;letter-spacing:.5px}
+ .stage-foot{bottom:7px;font-size:6px;letter-spacing:1px}
+ #stage-empty{font-size:11px;letter-spacing:0;padding:0 8px}
+ .palette{order:0;grid-column:auto;padding:6px 8px;display:flex;flex-direction:column}
+ .palette h2{font-size:14px}.palette .section-head span{font-size:8px}
+ .palette .hint,.palette .tiny{display:none}
+ .swatches{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(3,minmax(20px,1fr));flex:1;min-height:0;gap:5px;margin:5px 0}
+ .swatch{height:auto;min-height:20px;font-size:10px;border-radius:5px}
+ .palette .quiet{width:100%;font-size:9px;padding:3px;min-height:22px}
+ .readout{padding:0 4px;min-height:0;gap:12px;flex-wrap:nowrap;overflow:hidden}
+ .readout .eyebrow{font-size:7px}.readout strong{font-size:23px;min-width:82px;margin:0;line-height:1.15}
+ .notes-wrap{min-width:0;overflow:auto;max-height:44px}
+ #notes{font-size:11px;letter-spacing:0;overflow-wrap:anywhere}#detail{font-size:9px}
+ .play-tools{width:auto;flex-shrink:0;font-size:10px;gap:5px}
+ .play-tools button{padding:6px 8px;min-height:30px}
+ .keyboard-scroll{padding:0 0 4px;overflow:visible;min-height:0}
+ .keyboard{height:100%;min-width:0;width:100%}
+ .key{font-size:9px;padding-bottom:7px;min-width:0}
+ .key.black{height:62%;font-size:8px;padding-bottom:5px}
+ footer{display:none}
+}
+
+/* Each key keeps its pitch-class pigment at rest. Black keys are a slightly
+   deeper pastel so the two keyboard levels remain recognizable. */
+.key{
+ background:color-mix(in srgb,var(--note) 30%,#fffdf6);
+ color:#172c39;
+ border-color:#94a7ad;
+}
+.key.black{
+ background:color-mix(in srgb,var(--note) 38%,#f5f2ed);
+ color:#172c39;
+ border-color:#657a86;
+ box-shadow:0 3px 0 #72838c;
+}
+.key.active{
+ background:color-mix(in srgb,var(--note) 40%,#fffdf6);
+ color:#172c39;
+ box-shadow:inset 0 0 0 2px #365a72,0 1px 0 #8ba0ab;
+ transform:translateY(2px);
+}
+.key.active::after{content:'';position:absolute;bottom:26px;left:calc(50% - 3px);width:6px;height:6px;border-radius:50%;background:#365a72}
+body.night .key{background:color-mix(in srgb,var(--note) 28%,#e4e9ec);color:#172c39;border-color:#869ca7}
+body.night .key.black{background:color-mix(in srgb,var(--note) 35%,#e4e9ec);color:#172c39;border-color:#526c7c;box-shadow:0 3px 0 #344b5a}
+body.night .key.active{background:color-mix(in srgb,var(--note) 40%,#f5f2e9);color:#172c39;box-shadow:inset 0 0 0 2px #365a72,0 1px 0 #8ba0ab}
+@media (orientation:landscape) and (max-height:600px) and (max-width:1100px){.key.active::after{bottom:20px}}
+
+/* Local v6 study: preserve the instrument layout; controls sit with their content. */
+#palette-preset{width:100%;font-size:11px;padding:7px 8px;margin-top:4px}
+.sprite-frame{position:relative}
+#companion-sample{position:relative;inset:auto;width:100%;height:100%;border-radius:8px;background:radial-gradient(ellipse,#b9cfb51a,transparent 75%)}
+#companion-sample[hidden]{display:none}
+#character-visible{font-size:10px;margin:4px 0;min-height:28px;background:transparent;color:var(--ink)}
+#character-visible[aria-pressed=true]{background:var(--panel);color:var(--ink)}
+@media(max-width:760px){#palette-preset{width:145px;margin:6px 0 0}#character-visible{font-size:9px;padding:5px 2px}}
+@media (orientation:landscape) and (max-height:600px) and (max-width:1100px){
+ #palette-preset{width:100%;margin-top:4px;padding:3px 5px;font-size:10px;min-height:24px;flex-shrink:0}
+ .palette .section-head{display:none}
+ #character-visible{font-size:9px;padding:3px 2px;min-height:24px;flex-shrink:0;margin:3px 0 0}
+ .sprite-frame #companion-sample{width:100%;height:100%;position:absolute;inset:0}
+}
+.stage-tabs{position:absolute;z-index:3;top:8px;left:10px;display:flex;gap:5px}.stage-tabs button{font-size:10px;padding:5px 9px}.stage-heading{top:49px}.stage.mixing .stage-heading,.stage.mixing #stage-empty,.stage.mixing .stage-foot{display:none}
+#sound-mixer{position:relative;padding:46px 16px 12px}#sound-mixer[hidden]{display:none}.mix-intro{font-size:12px}.mix-intro span{display:block;font-size:9px;color:var(--muted);margin-top:3px}.mix-layout{display:grid;grid-template-columns:minmax(100px,1fr) 120px;gap:16px;align-items:center;margin:8px 0}.mix-controls label{display:block;font-size:10px;margin:6px 0}.mix-controls output{float:right;color:var(--muted)}.mix-controls input{display:block;width:100%;margin:7px 0}.mix-controls .quiet{margin-top:4px}#mix-field{position:relative;height:155px;touch-action:none;cursor:crosshair;border-radius:45%;background:radial-gradient(ellipse at 50% 12%,#e6a0af90,transparent 55%),radial-gradient(ellipse at 10% 88%,#e8c87890,transparent 55%),radial-gradient(ellipse at 90% 88%,#8ebdd590,transparent 55%);border:1px dashed var(--line)}.pigment{position:absolute;z-index:1;font-size:10px;color:#375361;pointer-events:none}.rose{top:6%;left:44%}.honey{bottom:5%;left:4%}.sky{bottom:5%;right:5%}#mixed-drop{position:absolute;width:34px;height:34px;border-radius:47% 53% 48% 52%;transform:translate(-50%,-50%);box-shadow:0 3px 9px #21465b30,inset 0 0 0 2px #fff9;pointer-events:none}#mix-readout{font-size:9px;line-height:1.7;color:var(--ink)}.mix-note{font-size:8px;color:var(--muted);margin:5px 0 0;line-height:1.6}
+@media(max-width:760px){.stage.mixing{grid-column:1/-1;min-height:310px}.mix-layout{grid-template-columns:minmax(100px,1fr) 120px}}
+@media (orientation:landscape) and (max-height:600px) and (max-width:1100px){.stage.mixing{grid-column:auto;min-height:0;overflow:auto}.stage-tabs{top:5px;left:7px}.stage-tabs button{padding:3px 6px;font-size:9px}.stage-heading{top:34px}#sound-mixer{padding:34px 10px 8px}.mix-intro{font-size:10px}.mix-intro span,.mix-note{display:none}.mix-layout{grid-template-columns:minmax(80px,1fr) 95px;gap:8px;margin:4px 0}#mix-field{height:95px}.mix-controls label{font-size:9px;margin:2px 0}.mix-controls input{margin:2px 0;height:12px}.mix-controls .quiet{padding:2px;font-size:8px}#mix-readout{font-size:8px}}
+/* v7: three pots replace the left colour cards only in sound-palette mode. */
+[hidden]{display:none!important}.palette.painting .hint,.palette.painting .section-head span{display:none}.paint-instruction{font-size:10px;line-height:1.6;color:var(--muted)}.paint-pot{display:flex;align-items:center;gap:10px;width:100%;margin:8px 0;padding:8px;text-align:left;font-size:12px;touch-action:none;user-select:none}.paint-pot i{display:block;width:29px;height:26px;border-radius:45% 52% 43% 57%;box-shadow:inset 0 0 0 1px #0001}.paint-pot[aria-pressed=true]{background:var(--panel);color:var(--ink);box-shadow:0 0 0 2px var(--blue)}.paint-size-label{display:block;font-size:9px;margin-top:13px;color:var(--muted)}.paint-size-label input{display:block;width:100%;margin-top:7px}#sound-mixer{padding-bottom:10px}#mix-field{height:183px;margin:10px 0;border-radius:8px;background:var(--panel);border:1px dashed var(--line);cursor:crosshair}#paint-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}#paint-cursor{position:absolute;width:12px;height:12px;border:2px solid var(--ink);border-radius:50%;transform:translate(-50%,-50%);pointer-events:none}.paint-tools{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px}.paint-tools button{font-size:9px;padding:5px 7px}#paint-ghost{position:fixed;z-index:999;width:28px;height:28px;transform:translate(-50%,-50%);border-radius:45% 55% 50% 48%;box-shadow:0 2px 8px #0002;pointer-events:none}.drop-ready{outline:2px solid var(--blue)}
+@media(max-width:760px){.palette.painting{order:0}.stage.mixing{order:1}.palette.painting #paint-sources{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.paint-instruction{width:100%;margin:4px 0}.paint-instruction br{display:none}.paint-pot{width:auto;flex:1;min-width:80px;font-size:11px;margin:4px 0}.paint-size-label{width:100%;margin-top:3px}.paint-size-label input{width:150px;display:inline-block;margin:0 0 0 8px;vertical-align:middle}.palette.painting .section-head{display:none}.stage.mixing{min-height:335px}}
+@media (orientation:landscape) and (max-height:600px) and (max-width:1100px){.palette.painting #paint-sources{display:block;overflow:auto}.paint-instruction{font-size:8px;margin:2px 0}.paint-pot{width:100%;padding:3px 5px;margin:5px 0;font-size:10px;gap:6px;min-width:0}.paint-pot i{width:20px;height:18px}.paint-size-label{font-size:8px;margin-top:5px}.paint-size-label input{width:100%;margin:2px 0}.stage.mixing{min-height:0}.stage.mixing #mix-field{height:100px;margin:5px 0}.paint-tools button{font-size:8px;padding:3px 4px}.paint-tools{margin-bottom:4px}}
+
+/* v8 paint studio: the canvas is a field of paint, not a colour selector. */
+#paint-pots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;width:100%}.paint-pot{display:flex;flex-direction:column;min-width:0;width:100%;gap:3px;padding:5px 2px;margin:0;font-size:9px}.paint-pot i{width:27px;height:24px}.paint-size-label input[type=checkbox]{width:auto;display:inline;margin:0 4px 0 0}#mix-field{height:230px;border:0;border-radius:3px;background:repeating-linear-gradient(0deg,transparent 0 19px,#b5b0a00d 20px),var(--panel);box-shadow:inset 0 0 24px #927b5420}#sound-mixer{padding-bottom:15px}.stage.mixing{min-height:385px}#paint-sources{width:100%}.paint-instruction{margin-top:6px}
+@media (orientation:landscape) and (max-height:600px) and (max-width:1100px){body{height:auto!important;min-height:100dvh;overflow:auto!important}.notebook{height:auto!important;min-height:100dvh;overflow:visible;display:block}.workspace{height:auto!important;min-height:320px;grid-template-columns:145px minmax(260px,1fr) 130px;overflow:visible}.panel{height:auto;min-height:320px}.palette.painting #paint-sources{display:block;overflow:visible}.stage.mixing{min-height:340px;overflow:visible}.stage.mixing #mix-field{height:210px}.paint-pot{padding:4px 1px;font-size:9px;flex-direction:column;width:100%;margin:0}.paint-pot i{width:23px;height:21px}.paint-instruction{font-size:9px}.keyboard-scroll{height:100px;margin-top:10px;overflow-x:auto}.keyboard{height:90px;min-width:560px}.readout{min-height:62px;padding:8px}.mix-intro span{display:block}.notebook header{padding-bottom:12px}}
