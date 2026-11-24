@@ -1,0 +1,5 @@
+FWT Chord Palette is a local personal-use project by Filler World Telescope.
+
+No third-party source code is included in this repository beyond references to the locally installed JUCE framework used during build.
+
+The user-provided Alice image in Assets is not relicensed by this file.
