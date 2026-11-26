@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#f6f1e5">
   <title>Chord Palette · パレットエンジン</title>
   <style>
@@ -20,7 +20,7 @@ button,select,input{font:inherit;color:inherit}
 button,select,.icon-button,.icon-switch span,.brushes span,.reader-switch b {
   background:var(--panel);border:1px solid var(--line);border-radius:5px 7px 5px 4px;cursor:pointer;
 }
-button,select{min-height:30px}
+button,select{min-height:30px;touch-action:manipulation}
 button:enabled:hover,select:enabled:hover,.file:hover,.icon-switch:hover span,.brushes label:hover span,.reader-switch:hover b{background:var(--hover);border-color:var(--active)}
 button:disabled,select:disabled{opacity:.52;cursor:default}
 :focus-visible,.file:focus-within{outline:2px solid var(--ink);outline-offset:2px}
@@ -166,6 +166,47 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
   #palette{margin:6px 0}.layer-section{padding-bottom:5px;margin-bottom:6px}
   .performance{margin-top:4px}.key-head{margin-bottom:2px}
 }
+
+/* Mobile workspace: the painting model is independent of these display sizes. */
+.mobile-tools,.mobile-sheet{display:none}
+.canvas-stage{display:contents}
+.control-label{display:none}
+#chord{touch-action:none;user-select:none;-webkit-user-select:none}
+@media (max-width:900px), (pointer:coarse) and (max-height:600px){
+  body{padding:max(4px,env(safe-area-inset-top)) max(4px,env(safe-area-inset-right)) max(4px,env(safe-area-inset-bottom)) max(4px,env(safe-area-inset-left));min-height:0}
+  .notebook{height:calc(100svh - max(4px,env(safe-area-inset-top)) - max(4px,env(safe-area-inset-bottom)));height:calc(100dvh - max(4px,env(safe-area-inset-top)) - max(4px,env(safe-area-inset-bottom)));padding:5px;position:relative;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:5px;container-type:normal}
+  .mast{padding:3px 6px;min-height:44px;gap:4px}.identity{display:block}.identity h1{font-size:16px;white-space:nowrap}.identity>span{display:none}
+  .sound-controls{gap:4px}.volume input{width:42px;min-height:36px}.volume .icon{display:none}.primary{min-height:38px;font-size:11px;padding:4px 6px;white-space:nowrap}
+  .mobile-tools{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+  .mobile-tools button{min-height:44px;display:flex;align-items:center;justify-content:center;gap:5px;font-size:12px;padding:3px}
+  .mobile-tools button[aria-expanded=true]{background:#d9e9eb;border-color:var(--ink)}
+  .workspace{display:flex;min-height:0;min-width:0}.canvas-panel{padding:4px 6px;flex:1;min-height:0;gap:3px;order:initial}
+  .canvas-panel .section-head{flex-wrap:nowrap;min-height:30px}.canvas-panel h2{font-size:14px}.canvas-panel .actions{gap:5px}
+  .canvas-panel .icon-button{min-height:32px;width:auto;min-width:40px;padding:2px 5px;display:flex;gap:4px}.canvas-panel .control-label{display:block;font-size:10px}
+  .canvas-stage{display:grid;place-items:center;container-type:size;flex:1;min-height:0;width:100%}
+  .canvas-wrap{width:min(100cqw,calc(100cqh * 4 / 3));max-width:none;aspect-ratio:4/3;margin:0}
+  .paint-caption{min-height:22px;height:22px;font-size:10px}.paint-caption #under-brush{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.help summary{width:32px}
+  .performance{padding:5px 6px 3px;margin:0;min-width:0}.key-head{margin-bottom:4px;min-height:34px}.key-head h2{font-size:14px}.key-actions select{min-height:34px}
+  .key-actions .icon-button{width:auto;min-width:50px;min-height:34px;display:flex;gap:4px;padding:3px 5px}.key-actions .control-label{display:block;font-size:10px}
+  #keyboard{height:clamp(80px,15dvh,112px)}#keyboard button{min-height:0;-webkit-touch-callout:none;-webkit-user-select:none}#keyboard button.black{width:74%;height:63%}#keyboard button>span:last-child{display:none}#keyboard .note{font-size:11px}
+  .play-status{display:block;min-height:18px;margin-top:3px;line-height:1.3;font-size:10px}.play-status #status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#last-output{display:none}
+  .mobile-sheet{display:block;position:absolute;z-index:10;top:102px;right:5px;left:5px;max-height:calc(100% - 292px);padding:8px;border:1px solid var(--active);border-radius:10px;background:var(--panel);box-shadow:0 6px 24px #235a8038;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  .sheet-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;position:sticky;top:-8px;background:var(--panel);z-index:2;padding:3px 0 7px;border-bottom:1px solid var(--line);margin-bottom:6px}.sheet-heading h2{font-size:16px}.sheet-heading button{min-width:64px;min-height:40px}
+  .mobile-sheet .panel{padding:4px 0;border:0;background:none}.mobile-sheet .paint-tools{display:block}.mobile-sheet .paint-tools h2{display:none}.mobile-sheet .reading-panel{display:flex;gap:8px}
+  .mobile-sheet button,.mobile-sheet select{min-height:40px}.mobile-sheet select{font-size:16px}.mobile-sheet .icon-button,.mobile-sheet .icon-switch span,.mobile-sheet .brushes span{width:auto;min-width:44px;height:auto;min-height:44px;display:flex;justify-content:center;gap:5px;padding:4px 6px}
+  .mobile-sheet .control-label{display:block;font-size:11px}.mobile-sheet .icon-switch span::after,.mobile-sheet .brushes span::after{content:attr(data-label);font-size:11px}
+  .mobile-sheet .brushes{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.mobile-sheet #palette{grid-template-columns:repeat(6,1fr);margin:6px 0}.mobile-sheet .swatch{min-height:40px}.swatch::before{width:24px}
+  .mobile-sheet .layer-section{padding:8px 0;margin:0}.mobile-sheet .dial-face{width:48px;height:44px}.mobile-sheet .dial-label{font-size:11px}.mobile-sheet .dial output{font-size:12px}.mobile-sheet .brush-dials{justify-content:space-evenly;margin-top:6px}
+  .mobile-sheet .reading-slots{grid-template-columns:minmax(0,1fr);gap:6px;margin:0}.mobile-sheet .reading-card{grid-template-columns:minmax(0,1fr) 62px}.mobile-sheet .reader-switch b{min-width:40px;height:42px}.mobile-sheet .reader-mode select{padding-left:22px;font-size:14px}.mobile-sheet .reader-controls .dial{display:grid;grid-template-columns:1fr}.mobile-sheet .reader-controls .dial-label{display:block}.mobile-sheet .reader-mode .icon{width:15px;left:4px}
+  .mobile-sheet .band summary{padding:10px 4px;font-size:12px}.mobile-sheet #boundary-controls{display:block}.mobile-sheet #boundary-controls legend{float:none}.mobile-sheet .boundary-ranges{gap:12px}
+  #mobile-view{display:flex;flex-wrap:wrap;align-items:center;gap:12px}#mobile-view .trail-toggle{min-height:44px;font-size:14px}#mobile-view #view-modes span{padding:14px 10px;font-size:13px}#mobile-view .collision-style{width:100%;font-size:14px}
+  .mobile-sheet .project-bar{display:flex;flex-wrap:wrap;gap:10px;padding:5px 0}.mobile-sheet .example{width:100%}.mobile-sheet .example select{flex:1;max-width:100%}.mobile-sheet .actions{gap:8px}.mobile-sheet .auditions{margin-top:14px}.mobile-sheet .auditions summary{padding:10px 0}.mobile-sheet .clips{grid-template-columns:1fr;padding:5px 0}
+}
+@media (orientation:landscape) and (max-height:600px) and (max-width:1100px){
+  .notebook{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:44px minmax(0,1fr);gap:5px}
+  .mast{grid-area:1/1}.mobile-tools{grid-area:1/2}.mobile-tools button{font-size:11px;gap:4px}.workspace{grid-area:2/1}.performance{grid-area:2/2;display:flex;flex-direction:column;justify-content:center}.key-head{margin-bottom:8px}#keyboard{height:clamp(100px,40dvh,170px);flex:none}.play-status{margin-top:8px}
+  .mobile-sheet{top:54px;left:5px;right:auto;width:calc(50% - 7.5px);max-height:calc(100% - 60px)}
+}
 </style>
 </head>
 <body>
@@ -211,6 +252,16 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
     <div class="sound-controls"><label class="volume" title="音量"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-volume"/></svg><input id="volume" aria-label="音量" type="range" min="0" max="2" step=".01" value="1.5"></label>
       <button id="start" class="primary" type="button"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-power"/></svg><span>音を有効にする</span></button></div>
   </header>
+  <nav class="mobile-tools" aria-label="設定パネル">
+    <button type="button" data-panel="paint" aria-controls="mobile-paint" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-paint"/></svg><span>絵の具</span></button>
+    <button type="button" data-panel="readers" aria-controls="mobile-readers" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-forward"/></svg><span>読み方</span></button>
+    <button type="button" data-panel="view" aria-controls="mobile-view" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg><span>表示</span></button>
+    <button type="button" data-panel="project" aria-controls="mobile-project" aria-expanded="false"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg><span>作品</span></button>
+  </nav>
+  <section class="mobile-sheet" aria-labelledby="sheet-title" hidden>
+    <div class="sheet-heading"><h2 id="sheet-title">設定</h2><button id="close-sheet" type="button">閉じる ×</button></div>
+    <div id="mobile-paint" hidden></div><div id="mobile-readers" hidden></div><div id="mobile-view" hidden></div><div id="mobile-project" hidden></div>
+  </section>
   <div class="project-bar">
     <label class="example" title="絵の例"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-palette"/></svg><select id="example" aria-label="絵の例"><option value="" disabled>作例を選ぶ</option></select></label>
     <div class="actions">
@@ -248,14 +299,14 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
         </div>
         <button id="undo" class="icon-button" type="button" aria-label="ひとつ戻す" title="ひとつ戻す" disabled><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-undo"/></svg></button>
       </div></div>
-      <div class="canvas-wrap">
+      <div class="canvas-stage"><div class="canvas-wrap">
         <canvas id="paint" width="768" height="576" aria-label="絵の具を置き、重ね、広げるキャンバス"></canvas>
         <canvas id="wet-film" width="480" height="360" aria-hidden="true"></canvas>
         <canvas id="resonance" width="480" height="360" aria-hidden="true"></canvas>
         <canvas id="pigment-motion" width="480" height="360" aria-hidden="true"></canvas>
         <div class="scanline" id="scanline"></div><div class="scanline secondary" id="scanline-2"></div><div class="scanline third" id="scanline-3"></div>
       </div>
-      <div class="paint-caption"><label class="collision-style">衝突 <select id="collision-style" aria-label="衝突の演出" autocomplete="off">
+      </div><div class="paint-caption"><label class="collision-style">衝突 <select id="collision-style" aria-label="衝突の演出" autocomplete="off">
         <option value="light" selected>光（標準）</option><option value="alice">花</option><option value="minal">星と歯車</option>
         <option value="teal">羽</option><option value="lucy">蝶</option>
       </select></label><output id="under-brush"></output><details class="help"><summary title="描画・試奏のヒント" aria-label="描画・試奏のヒント"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><use href="#i-info"/></svg></summary>
@@ -2966,8 +3017,16 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
     request(target, data) {
       return new Promise((resolve, reject) => {
         const id = ++this.serial;
-        this.pending.set(id, { resolve, reject });
-        target.postMessage({ ...data, id, request: id });
+        const timer = setTimeout(() => {
+          this.pending.delete(id);
+          reject(Error("音声処理が応答しません。もう一度「音を有効にする」を押してください。"));
+        }, 15000);
+        this.pending.set(id, {
+          resolve: (value) => { clearTimeout(timer); resolve(value); },
+          reject: (error) => { clearTimeout(timer); reject(error); }
+        });
+        try { target.postMessage({ ...data, id, request: id }); }
+        catch (error) { this.pending.delete(id); clearTimeout(timer); reject(error); }
       });
     }
     async initialize(painting, scan) {
@@ -4019,42 +4078,72 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
       $("open").value = "";
     }
   };
-  async function initializeInstrument(source, bank) {
-    for (let attempt = 0;; attempt++) {
-      const context = new AudioContext({ latencyHint: "interactive" });
-      audioContext = context;
-      context.addEventListener("statechange", () => {
-        if (context === audioContext && context.state !== "running")
-          display.clear();
-      });
-      await context.resume();
-      instrument = new PaletteInstrument(context);
-      instrument.onError = (message) => status("音声処理：" + message);
-      try {
-        return await instrument.initialize(source, bank);
-      } catch (error) {
-        if (attempt || !(error instanceof AudioModuleLoadError))
-          throw error;
-        instrument.dispose();
-        instrument = null;
-        await context.close();
-        status("音声モジュールの読み込みを再試行しています。");
-      }
+  var startingAudio = false;
+  var heldNotes = new Map;
+  function audioButton() {
+    $("start").disabled = startingAudio;
+    $("start").classList.toggle("ready", ready && audioContext?.state === "running");
+    $("start").querySelector("span").textContent = startingAudio ? "音を準備中…" : ready && audioContext?.state === "running" ? "演奏できます" : ready ? "音を再開" : "音を有効にする";
+  }
+  function resumeAudio(context) {
+    // Safari must see resume() and source.start() in the tap/key event itself.
+    try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (_) {}
+    const resumed = context.resume();
+    if (context.state !== "running") {
+      const pulse = context.createBufferSource();
+      pulse.buffer = context.createBuffer(1, 1, context.sampleRate);
+      pulse.connect(context.destination);
+      pulse.onended = () => pulse.disconnect();
+      pulse.start(0);
     }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(Error("音声が中断されています。「音を再開」をタップしてください。")), 4000);
+      resumed.then(() => {
+        clearTimeout(timer);
+        if (context.state === "running") resolve();
+        else reject(Error("音声を再開できませんでした。もう一度タップしてください。"));
+      }, (error) => { clearTimeout(timer); reject(error); });
+    });
   }
   async function startAudio() {
-    if (ready || $("start").disabled)
+    if (startingAudio) return;
+    if (ready) {
+      try {
+        await resumeAudio(audioContext);
+        status("演奏できます。鍵盤を押してください。");
+      } catch (error) { status(error.message); }
+      audioButton();
       return;
+    }
+    startingAudio = true;
+    audioButton();
+    $("preview-scan").disabled = true;
     try {
-      $("start").disabled = true;
-      $("preview-scan").disabled = true;
+      const Context = window.AudioContext || window.webkitAudioContext;
+      if (!Context) throw Error("このブラウザは Web Audio に対応していません。");
+      const context = audioContext = new Context({ latencyHint: "interactive" });
+      context.addEventListener("statechange", () => {
+        if (context !== audioContext) return;
+        if (context.state !== "running") {
+          releaseAll();
+          if (ready) status("音声が中断されました。「音を再開」をタップしてください。");
+        } else if (ready) {
+          status("演奏できます。鍵盤を押してください。");
+        }
+        audioButton();
+      });
+      const resumed = resumeAudio(context);
+      await resumed;
+      if (!context.audioWorklet) throw Error("音声処理に対応した Safari / ブラウザへ更新してください。");
       const initialRevision = compiling, initialPainting = painting;
-      const result = await initializeInstrument(initialPainting, readings.snapshot());
-      output = audioContext.createGain();
+      instrument = new PaletteInstrument(context);
+      instrument.onError = (message) => status("音声処理：" + message);
+      const result = await instrument.initialize(initialPainting, readings.snapshot());
+      output = context.createGain();
       output.gain.value = Number($("volume").value);
       instrument.connect(output);
-      output.connect(audioContext.destination);
-      masterProbe = audioContext.createAnalyser();
+      output.connect(context.destination);
+      masterProbe = context.createAnalyser();
       masterProbe.fftSize = outputWindow.length;
       output.connect(masterProbe);
       instrument.setReadingSlots(readings.snapshot());
@@ -4062,29 +4151,27 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
       ready = true;
       needsPaint = compiling !== initialRevision;
       acceptDisplay(initialPainting, initialRevision, result);
-      if (needsPaint)
-        schedulePaint();
-      $("start").classList.add("ready");
-      $("start").querySelector("span").textContent = "演奏できます";
-      status(`${audioContext.sampleRate} Hz · ${result.stats.nodes}領域 · 8声。鍵盤を押してください。`);
+      if (needsPaint) schedulePaint();
+      status(`${context.sampleRate} Hz · ${result.stats.nodes}領域 · 8声。鍵盤を押してください。`);
     } catch (error) {
       ready = false;
       status("開始できませんでした：" + error.message);
       instrument?.dispose();
-      audioContext?.close();
+      audioContext?.close().catch(() => {});
       instrument = null;
-      $("start").disabled = false;
     } finally {
+      startingAudio = false;
+      audioButton();
       $("preview-scan").disabled = false;
     }
   }
   $("start").onclick = startAudio;
   $("preview-scan").onclick = async () => {
-    if (!ready)
-      await startAudio();
-    if (!ready)
-      return;
-    await audioContext.resume();
+    try {
+      if (!ready) await startAudio();
+      else await resumeAudio(audioContext);
+    } catch (error) { status(error.message); return; }
+    if (!ready || audioContext.state !== "running") return;
     if ($("preview-scan").hidden || document.hidden || !document.hasFocus())
       return;
     endPreview();
@@ -4101,25 +4188,38 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
     if (output)
       output.gain.setTargetAtTime(Number($("volume").value), audioContext.currentTime, 0.01);
   };
+  function refreshKey(semitone) {
+    $("key-" + semitone)?.classList.toggle("pressed", [...heldNotes.values()].some((held) => held.semitone === semitone));
+  }
   function noteOn(id, semitone) {
-    if (active.has(id))
-      return;
+    if (active.has(id)) return;
     if (!ready) {
       status("先に「音を有効にする」を押してください。");
       return;
     }
+    const held = { semitone, started: false, pitch: Number($("octave").value) + semitone };
     active.add(id);
-    audioContext.resume();
-    instrument.noteOn(id, Number($("octave").value) + semitone);
-    $("key-" + semitone)?.classList.add("pressed");
+    heldNotes.set(id, held);
+    refreshKey(semitone);
+    const play = () => {
+      // A finger may already have lifted while Safari was resuming.
+      if (heldNotes.get(id) !== held || !ready || document.hidden) return;
+      held.started = true;
+      instrument.noteOn(id, held.pitch);
+    };
+    if (audioContext.state === "running") play();
+    else resumeAudio(audioContext).then(play).catch((error) => {
+      if (heldNotes.get(id) === held) noteOff(id, semitone);
+      status(error.message);
+      audioButton();
+    });
   }
   function noteOff(id, semitone) {
-    if (!active.delete(id))
-      return;
-    if (ready)
-      instrument.noteOff(id);
-    const stillDown = ["key-", "mouse-", "focus-", "chord-"].some((prefix) => active.has(prefix + semitone));
-    $("key-" + semitone)?.classList.toggle("pressed", stillDown);
+    const held = heldNotes.get(id);
+    heldNotes.delete(id);
+    active.delete(id);
+    if (ready && held?.started) instrument.noteOff(id);
+    refreshKey(semitone);
   }
   var keys = ["a", "w", "s", "e", "d", "f", "t", "g", "y", "h", "u", "j", "k"];
   var pitches = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B", "C"];
@@ -4150,11 +4250,12 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
     }
     b.onpointerdown = (e) => {
       e.preventDefault();
+      if (e.button !== 0) return;
       b.setPointerCapture(e.pointerId);
-      noteOn("mouse-" + i, i);
+      noteOn("pointer-" + e.pointerId + "-" + i, i);
     };
     for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
-      b.addEventListener(type, () => noteOff("mouse-" + i, i));
+      b.addEventListener(type, (e) => noteOff("pointer-" + e.pointerId + "-" + i, i));
     b.onkeydown = (e) => {
       if (e.key === " " || e.key === "Enter") {
         e.preventDefault();
@@ -4197,12 +4298,18 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
   function releaseAll() {
     display.clear();
     active.clear();
+    heldNotes.clear();
     previewId = null;
     if (ready)
       instrument.allNotesOff();
     document.querySelectorAll(".pressed").forEach((e) => e.classList.remove("pressed"));
   }
   window.addEventListener("blur", releaseAll);
+  window.addEventListener("pagehide", releaseAll);
+  window.addEventListener("resize", () => {
+    if (stroke) { finishStroke(); prepare(); }
+    releaseAll();
+  });
   document.addEventListener("visibilitychange", () => {
     if (document.hidden)
       releaseAll();
@@ -4212,32 +4319,33 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
     if (ready)
       instrument.panic();
   };
-  function pressChord() {
-    [0, 4, 7, 12].forEach((n) => noteOn("chord-" + n, n));
+  function pressChord(owner) {
+    [0, 4, 7, 12].forEach((n) => noteOn("chord-" + owner + "-" + n, n));
     $("chord").classList.toggle("pressed", ready);
   }
-  function releaseChord() {
-    [0, 4, 7, 12].forEach((n) => noteOff("chord-" + n, n));
-    $("chord").classList.remove("pressed");
+  function releaseChord(owner) {
+    [0, 4, 7, 12].forEach((n) => noteOff("chord-" + owner + "-" + n, n));
+    $("chord").classList.toggle("pressed", [...heldNotes.keys()].some((id) => id.startsWith("chord-")));
   }
   $("chord").onpointerdown = (e) => {
+    if (e.button !== 0) return;
     e.preventDefault();
     $("chord").setPointerCapture(e.pointerId);
-    pressChord();
+    pressChord("pointer-" + e.pointerId);
   };
-  for (const type of ["pointerup", "pointercancel", "lostpointercapture", "blur"])
-    $("chord").addEventListener(type, releaseChord);
+  for (const type of ["pointerup", "pointercancel", "lostpointercapture"])
+    $("chord").addEventListener(type, (e) => releaseChord("pointer-" + e.pointerId));
+  $("chord").onblur = () => releaseChord("focus");
   $("chord").onkeydown = (e) => {
     if (e.key === " " || e.key === "Enter") {
       e.preventDefault();
-      if (!e.repeat)
-        pressChord();
+      if (!e.repeat) pressChord("focus");
     }
   };
   $("chord").onkeyup = (e) => {
     if (e.key === " " || e.key === "Enter") {
       e.preventDefault();
-      releaseChord();
+      releaseChord("focus");
     }
   };
   var originals = [$("scanline"), $("scanline-2"), $("scanline-3")];
@@ -4409,6 +4517,71 @@ canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
   canvas3.addEventListener("pointermove", inspectPaint);
   canvas3.addEventListener("pointerdown", inspectPaint);
   document.querySelectorAll(".dial input[type=range]").forEach(installDial);
+
+  function installMobilePanels() {
+    const media = matchMedia("(max-width:900px), (pointer:coarse) and (max-height:600px)");
+    const sheet = document.querySelector(".mobile-sheet");
+    const tabs = [...document.querySelectorAll("[data-panel]")];
+    const moves = [];
+    for (const [pane, selectors] of Object.entries({
+      paint: [".paint-tools"], readers: [".reading-panel"],
+      view: [".trail-toggle", "#light", "#view-modes", ".collision-style"],
+      project: [".project-bar", ".auditions"]
+    })) for (const selector of selectors) {
+      let node = document.querySelector(selector);
+      if (selector === "#light") node = node.closest("label");
+      const anchor = document.createComment("desktop: " + selector);
+      node.before(anchor);
+      moves.push({ node, anchor, pane });
+    }
+    document.querySelectorAll(".brushes label,.icon-switch").forEach((label) => {
+      const face = label.querySelector("span");
+      if (face) face.dataset.label = label.querySelector("input").getAttribute("aria-label") || label.title;
+    });
+    document.querySelectorAll(".icon-button").forEach((button) => {
+      const label = document.createElement("span");
+      label.className = "control-label";
+      label.textContent = button.getAttribute("aria-label") || button.title;
+      button.append(label);
+    });
+    let current = null;
+    function close(restoreFocus = false) {
+      const previous = current;
+      current = null;
+      sheet.hidden = true;
+      tabs.forEach((tab) => tab.setAttribute("aria-expanded", "false"));
+      if (restoreFocus) previous?.focus();
+    }
+    tabs.forEach((tab) => tab.addEventListener("click", () => {
+      if (current === tab) return close();
+      current = tab;
+      tabs.forEach((other) => {
+        const selected = other === tab;
+        other.setAttribute("aria-expanded", String(selected));
+        $("mobile-" + other.dataset.panel).hidden = !selected;
+      });
+      $("sheet-title").textContent = tab.textContent.trim();
+      sheet.hidden = false;
+      sheet.scrollTop = 0;
+    }));
+    $("close-sheet").onclick = () => close(true);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !sheet.hidden) close(true);
+    });
+    document.addEventListener("pointerdown", (event) => {
+      if (!sheet.hidden && !sheet.contains(event.target) && !event.target.closest(".mobile-tools")) close();
+    });
+    function layout() {
+      close();
+      for (const { node, anchor, pane } of moves) {
+        if (media.matches) $("mobile-" + pane).append(node);
+        else anchor.after(node);
+      }
+    }
+    media.addEventListener("change", layout);
+    layout();
+  }
+  installMobilePanels();
   function fitPainting() {
     const r = canvas3.getBoundingClientRect(), ratio = window.devicePixelRatio || 1;
     const w = Math.max(1, Math.round(r.width * ratio)), h = Math.max(1, Math.round(r.height * ratio));
